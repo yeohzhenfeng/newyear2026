@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>新年快乐</title>
 
   <style>
@@ -15,28 +15,17 @@
     }
   </style>
 </head>
+
 <body>
   <!-- 烟花 -->
   <canvas id="canvas" style="position:absolute;width:100%;height:100%;z-index:8888"></canvas>
   <!-- 粒子字 -->
-  <canvas style="position:absolute;width:100%;height:100%;z-index:9999" class="canvas"></canvas>
+  <canvas class="canvas" style="position:absolute;width:100%;height:100%;z-index:9999"></canvas>
 
+  <!-- 背景音乐（手机通常需要用户手势才允许播放） -->
   <audio id="myAudio" controls autoplay style="display:none">
     <source src="https://webfs.ali.kugou.com/202212311401/c12fd67b0106b68294c3eb354aec3786/part/0/1516896/KGTX/CLTX001/clip_488850641544fb4c6e14e6b8356d084f.mp3" type="audio/mpeg">
   </audio>
-
-  <div class="overlay">
-    <div class="tabs">
-      <div class="tabs-labels">
-        <span class="tabs-label">Commands</span>
-        <span class="tabs-label">Info</span>
-        <span class="tabs-label">Share</span>
-      </div>
-      <div class="tabs-panels">
-        <ul class="tabs-panel commands"></ul>
-      </div>
-    </div>
-  </div>
 
 <script>
 /* =========================
@@ -47,7 +36,7 @@ function resizeCanvasHiDPI(cvs, ctx){
   const rect = cvs.getBoundingClientRect();
   cvs.width  = Math.round(rect.width  * dpr);
   cvs.height = Math.round(rect.height * dpr);
-  // 之后都按“CSS像素”绘制
+  // 之后都按 CSS 像素绘制
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
 
@@ -58,11 +47,8 @@ function initVars(){
 
   pi=Math.PI;
   ctx=canvas.getContext("2d");
-
-  // HiDPI resize
   resizeCanvasHiDPI(canvas, ctx);
 
-  // cx/cy 用 CSS 像素
   const rect = canvas.getBoundingClientRect();
   cx=rect.width/2;
   cy=rect.height/2;
@@ -186,7 +172,6 @@ function splode(x,y,z){
     case 2: pow=new Audio(s+"pow3.ogg"); break;
     case 3: pow=new Audio(s+"pow4.ogg"); break;
   }
-  d=Math.sqrt((x-playerX)*(x-playerX)+(y-playerY)*(y-playerY)+(z-playerZ)*(z-playerZ));
   pow.play();
 }
 
@@ -247,8 +232,6 @@ function doLogic(){
 }
 
 function draw(){
-
-  // 清屏使用 CSS 像素尺寸
   const rect = canvas.getBoundingClientRect();
   ctx.clearRect(0,0,rect.width,rect.height);
 
@@ -269,6 +252,7 @@ function draw(){
     }
   }
   ctx.globalAlpha=1;
+
   for(i=0;i<seeds.length;++i){
     point=rasterizePoint(seeds[i].x,seeds[i].y,seeds[i].z);
     if(point.d!=-1){
@@ -276,12 +260,14 @@ function draw(){
       ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
     }
   }
+
   point1=new Object();
   for(i=0;i<sparks.length;++i){
     point=rasterizePoint(sparks[i].x,sparks[i].y,sparks[i].z);
     if(point.d!=-1){
       size=sparks[i].radius*200/(1+point.d);
       if(sparks[i].alpha<0)sparks[i].alpha=0;
+
       if(sparks[i].trail.length){
         point1.x=point.x;
         point1.y=point.y;
@@ -311,15 +297,16 @@ function draw(){
           }
         }
       }
+
       ctx.globalAlpha=sparks[i].alpha;
       ctx.drawImage(sparks[i].img,point.x-size/2,point.y-size/2,size,size);
     }
   }
+
   ctx.globalAlpha=1;
 }
 
 function frame(){
-
   if(frames>100000){
     seedTimer=0;
     frames=0;
@@ -340,20 +327,16 @@ window.addEventListener("resize",()=>{
 initVars();
 frame();
 
-/* =========================
-   Audio autoplay helper
-   (mobile may require user gesture; still try)
-   ========================= */
-window.onload = function(){
-  setInterval(toggleSound, 300);
-};
-
+/* ============ Music autoplay try ============ */
 function toggleSound() {
   var music = document.getElementById("myAudio");
   if (music && music.paused) {
     music.play().catch(()=>{});
   }
 }
+window.addEventListener('load', ()=> setInterval(toggleSound, 400));
+document.addEventListener('click', toggleSound, {passive:true});
+document.addEventListener('touchstart', toggleSound, {passive:true});
 </script>
 
 <script>
@@ -368,19 +351,20 @@ var S = {
     var nextYear = new Date().getFullYear() + 1;
 
     S.Drawing.init('.canvas');
-    document.body.classList.add('body--ready');
 
     if (i !== -1) {
       S.UI.simulate(decodeURI(action).substring(i + 3));
     } else {
-      // 这里是你红框那段（建议分行，手机更清晰）
+      // ✅ 最后加：|#image love|
+      // 注意：不要用 emoji（❤️）会导致手机变形/糊
       S.UI.simulate(
         '|#countdown 5||' + nextYear +
         '|HAPPY NEW YEAR|' +
         'Little Fairy|' +
         'May your hard work pay off|' +
-        'and bring you the best results.|' +
-        'Focus, believe, and achieve.|❤️'
+        'and bring you great results.|' +
+        'Focus. Believe. Achieve.|' +
+        '#image love'
       );
     }
 
@@ -399,17 +383,13 @@ S.Drawing = (function () {
                      window.mozRequestAnimationFrame    ||
                      window.oRequestAnimationFrame      ||
                      window.msRequestAnimationFrame     ||
-                     function(callback) {
-                       window.setTimeout(callback, 1000 / 60);
-                     };
+                     function(callback) { window.setTimeout(callback, 1000 / 60); };
 
   return {
     init: function (el) {
       canvas = document.querySelector(el);
       context = canvas.getContext('2d');
-
       this.adjustCanvas();
-
       window.addEventListener('resize', function () {
         S.Drawing.adjustCanvas();
       });
@@ -422,7 +402,6 @@ S.Drawing = (function () {
       requestFrame.call(window, this.loop.bind(this));
     },
 
-    // HiDPI here
     adjustCanvas: function () {
       resizeCanvasHiDPI(canvas, context);
     },
@@ -448,13 +427,9 @@ S.Drawing = (function () {
 }());
 
 S.UI = (function () {
-  var canvas = document.querySelector('.canvas'),
-      interval,
-      isTouch = false,
-      currentAction,
+  var interval,
       time,
       maxShapeSize = 30,
-      firstAction = true,
       sequence = [],
       cmd = '#';
 
@@ -465,10 +440,7 @@ S.UI = (function () {
     return h + ':' + m;
   }
 
-  function getValue(value) {
-    return value && value.split(' ')[1];
-  }
-
+  function getValue(value) { return value && value.split(' ')[1]; }
   function getAction(value) {
     value = value && value.split(' ')[0];
     return value && value[0] === cmd && value.substring(1);
@@ -476,7 +448,7 @@ S.UI = (function () {
 
   function timedAction(fn, delay, max, reverse) {
     clearInterval(interval);
-    currentAction = reverse ? max : 1;
+    var currentAction = reverse ? max : 1;
     fn(currentAction);
 
     if (!max || (!reverse && currentAction < max) || (reverse && currentAction > 0)) {
@@ -491,30 +463,20 @@ S.UI = (function () {
     }
   }
 
-  function reset(destroy) {
-    clearInterval(interval);
-    sequence = [];
-    time = null;
-    destroy && S.Shape.switchShape(S.ShapeBuilder.letter(''));
-  }
-
   function performAction(value) {
-    var action,
-        current;
+    var action, current, v;
 
     sequence = typeof(value) === 'object' ? value : sequence.concat(value.split('|'));
 
     timedAction(function () {
       current = sequence.shift();
       action = getAction(current);
-      value = getValue(current);
+      v = getValue(current);
 
       switch (action) {
         case 'countdown':
-          value = parseInt(value) || 10;
-          value = value > 0 ? value : 10;
-
-          // 倒数每个数字显示更久：1500ms
+          v = parseInt(v) || 10;
+          v = v > 0 ? v : 10;
           timedAction(function (index) {
             if (index === 0) {
               if (sequence.length === 0) {
@@ -525,25 +487,11 @@ S.UI = (function () {
             } else {
               S.Shape.switchShape(S.ShapeBuilder.letter(index), true);
             }
-          }, 1500, value, true);
-          break;
-
-        case 'rectangle':
-          value = value && value.split('x');
-          value = (value && value.length === 2) ? value : [maxShapeSize, maxShapeSize / 2];
-
-          S.Shape.switchShape(S.ShapeBuilder.rectangle(Math.min(maxShapeSize, parseInt(value[0])), Math.min(maxShapeSize, parseInt(value[1]))));
-          break;
-
-        case 'circle':
-          value = parseInt(value) || maxShapeSize;
-          value = Math.min(value, maxShapeSize);
-          S.Shape.switchShape(S.ShapeBuilder.circle(value));
+          }, 1500, v, true);
           break;
 
         case 'time':
           var t = formatTime(new Date());
-
           if (sequence.length > 0) {
             S.Shape.switchShape(S.ShapeBuilder.letter(t));
           } else {
@@ -557,77 +505,27 @@ S.UI = (function () {
           }
           break;
 
+        case 'image':
+          // ✅ 我们用 love：一男一女 + LOVE 同时出现
+          if (v === 'love') {
+            S.ShapeBuilder.imageFile(S.ShapeBuilder.assets.love, function (shape) {
+              S.Shape.switchShape(shape, true);
+            });
+          } else {
+            S.Shape.switchShape(S.ShapeBuilder.letter('LOVE'), true);
+          }
+          break;
+
         default:
+          // 普通文字
           S.Shape.switchShape(S.ShapeBuilder.letter(current[0] === cmd ? 'What?' : current));
       }
     }, 4000, sequence.length); // 每句停留 4 秒
   }
 
-  function bindEvents() {
-    document.body.addEventListener('keydown', function (e) {
-      if (e.keyCode === 13) {
-        firstAction = false;
-        reset();
-        performAction(input.value);
-      }
-    });
-
-    canvas.addEventListener('click', function () {
-      overlay.classList.remove('overlay--visible');
-    });
-  }
-
-  function init() {
-    bindEvents();
-    isTouch && document.body.classList.add('touch');
-  }
-
-  init();
-
   return {
-    simulate: function (action) {
-      performAction(action);
-    }
+    simulate: function (action) { performAction(action); }
   }
-}());
-
-S.UI.Tabs = (function () {
-  var tabs = document.querySelector('.tabs'),
-      labels = document.querySelector('.tabs-labels'),
-      triggers = document.querySelectorAll('.tabs-label'),
-      panels = document.querySelectorAll('.tabs-panel');
-
-  function activate(i) {
-    triggers[i].classList.add('tabs-label--active');
-    panels[i].classList.add('tabs-panel--active');
-  }
-
-  function bindEvents() {
-    labels.addEventListener('click', function (e) {
-      var el = e.target,
-          index;
-
-      if (el.classList.contains('tabs-label')) {
-        for (var t = 0; t < triggers.length; t++) {
-          triggers[t].classList.remove('tabs-label--active');
-          panels[t].classList.remove('tabs-panel--active');
-
-          if (el === triggers[t]) {
-            index = t;
-          }
-        }
-
-        activate(index);
-      }
-    });
-  }
-
-  function init() {
-    activate(0);
-    bindEvents();
-  }
-
-  init();
 }());
 
 S.Point = function (args) {
@@ -639,50 +537,46 @@ S.Point = function (args) {
 };
 
 S.Color = function (r, g, b, a) {
-  this.r = r;
-  this.g = g;
-  this.b = b;
-  this.a = a;
+  this.r = r; this.g = g; this.b = b; this.a = a;
 };
 
 S.Color.prototype = {
   render: function () {
-    return 'rgba(' + this.r + ',' +  + this.g + ',' + this.b + ',' + this.a + ')';
+    // ✅ 修复原代码的拼接 bug
+    return 'rgba(' + this.r + ',' + this.g + ',' + this.b + ',' + this.a + ')';
   }
 };
 
 S.Dot = function (x, y) {
-  this.p = new S.Point({
-    x: x,
-    y: y,
-    z: 5,
-    a: 1,
-    h: 0
-  });
-
+  this.p = new S.Point({ x: x, y: y, z: 5, a: 1, h: 0 });
   this.e = 0.07;
   this.s = true;
-
   this.c = new S.Color(255, 255, 255, this.p.a);
-
   this.t = this.clone();
   this.q = [];
 };
 
 S.Dot.prototype = {
   clone: function () {
-    return new S.Point({
-      x: this.x,
-      y: this.y,
-      z: this.z,
-      a: this.a,
-      h: this.h
-    });
+    return new S.Point({ x: this.x, y: this.y, z: this.z, a: this.a, h: this.h });
   },
 
   _draw: function () {
     this.c.a = this.p.a;
     S.Drawing.drawCircle(this.p, this.c);
+  },
+
+  distanceTo: function (n, details) {
+    var dx = this.p.x - n.x,
+        dy = this.p.y - n.y,
+        d = Math.sqrt(dx * dx + dy * dy);
+    return details ? [dx, dy, d] : d;
+  },
+
+  move: function (p, avoidStatic) {
+    if (!avoidStatic || (avoidStatic && this.distanceTo(p) > 1)) {
+      this.q.push(p);
+    }
   },
 
   _moveTowards: function (n) {
@@ -693,8 +587,7 @@ S.Dot.prototype = {
         e = this.e * d;
 
     if (this.p.h === -1) {
-      this.p.x = n.x;
-      this.p.y = n.y;
+      this.p.x = n.x; this.p.y = n.y;
       return true;
     }
 
@@ -702,20 +595,15 @@ S.Dot.prototype = {
       this.p.x -= ((dx / d) * e);
       this.p.y -= ((dy / d) * e);
     } else {
-      if (this.p.h > 0) {
-        this.p.h--;
-      } else {
-        return true;
-      }
+      if (this.p.h > 0) this.p.h--;
+      else return true;
     }
-
     return false;
   },
 
   _update: function () {
     if (this._moveTowards(this.t)) {
       var p = this.q.shift();
-
       if (p) {
         this.t.x = p.x || this.p.x;
         this.t.y = p.y || this.p.y;
@@ -735,24 +623,10 @@ S.Dot.prototype = {
       }
     }
 
-    d = this.p.a - this.t.a;
+    var d = this.p.a - this.t.a;
     this.p.a = Math.max(0.1, this.p.a - (d * 0.05));
     d = this.p.z - this.t.z;
     this.p.z = Math.max(1, this.p.z - (d * 0.05));
-  },
-
-  distanceTo: function (n, details) {
-    var dx = this.p.x - n.x,
-        dy = this.p.y - n.y,
-        d = Math.sqrt(dx * dx + dy * dy);
-
-    return details ? [dx, dy, d] : d;
-  },
-
-  move: function (p, avoidStatic) {
-    if (!avoidStatic || (avoidStatic && this.distanceTo(p) > 1)) {
-      this.q.push(p);
-    }
   },
 
   render: function () {
@@ -762,13 +636,13 @@ S.Dot.prototype = {
 };
 
 S.ShapeBuilder = (function () {
-  // 字更顺：gap=10
+  // ✅ 字更顺：gap 小一点
   var gap = 10,
       shapeCanvas = document.createElement('canvas'),
       shapeContext = shapeCanvas.getContext('2d'),
       fontSize = 500,
-      // 字体更好看（注意引号）
-      fontFamily = '"PingFang SC","HarmonyOS Sans","Microsoft YaHei","Helvetica Neue",Arial,sans-serif';
+      // ✅ 手机最稳系统字体栈
+      fontFamily = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif';
 
   function fit() {
     shapeCanvas.width = Math.floor(window.innerWidth / gap) * gap;
@@ -805,12 +679,11 @@ S.ShapeBuilder = (function () {
         p += gap * 4 * shapeCanvas.width;
       }
     }
-
     return { dots: dots, w: w + fx, h: h + fy };
   }
 
   function setFontSize(s) {
-    // 不用 bold，改 600 更干净
+    // ✅ 不用 bold，600 更干净不糊
     shapeContext.font = '600 ' + s + 'px ' + fontFamily;
   }
 
@@ -822,22 +695,67 @@ S.ShapeBuilder = (function () {
     fit();
     window.addEventListener('resize', fit);
   }
-
   init();
 
   return {
+    // ✅ 一男一女 + LOVE（SVG data URI）
+    assets: {
+      love:
+        'data:image/svg+xml;charset=utf-8,' +
+        encodeURIComponent(`
+          <svg xmlns="http://www.w3.org/2000/svg" width="900" height="260" viewBox="0 0 900 260">
+            <rect width="100%" height="100%" fill="black"/>
+            <!-- 男 -->
+            <g transform="translate(180,58)" fill="white">
+              <circle cx="0" cy="0" r="34"/>
+              <rect x="-18" y="38" width="36" height="92" rx="16"/>
+              <rect x="-56" y="58" width="112" height="22" rx="11"/>
+              <rect x="-42" y="126" width="22" height="62" rx="11"/>
+              <rect x="20"  y="126" width="22" height="62" rx="11"/>
+            </g>
+
+            <!-- 女 -->
+            <g transform="translate(320,58)" fill="white">
+              <circle cx="0" cy="0" r="34"/>
+              <path d="M-62,140 C-46,70 -22,38 0,38 C22,38 46,70 62,140
+                       L38,140 L20,210 L-20,210 L-38,140 Z"/>
+              <rect x="-48" y="58" width="96" height="22" rx="11"/>
+            </g>
+
+            <!-- LOVE -->
+            <text x="560" y="165"
+                  font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif"
+                  font-size="140" font-weight="700" fill="white" letter-spacing="10"
+                  text-anchor="middle">LOVE</text>
+          </svg>
+        `)
+    },
+
     imageFile: function (url, callback) {
-      var image = new Image(),
-          a = S.Drawing.getArea();
+      var image = new Image();
 
       image.onload = function () {
         shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height);
-        shapeContext.drawImage(this, 0, 0, a.h * 0.6, a.h * 0.6);
+
+        var a = S.Drawing.getArea();
+        var targetW = a.w * 0.85;
+        var targetH = a.h * 0.38;
+
+        var iw = this.width, ih = this.height;
+        var scale = Math.min(targetW / iw, targetH / ih);
+
+        var dw = iw * scale;
+        var dh = ih * scale;
+
+        var dx = (shapeCanvas.width - dw) / 2;
+        var dy = (shapeCanvas.height - dh) / 2;
+
+        shapeContext.drawImage(this, dx, dy, dw, dh);
         callback(processCanvas());
       };
 
       image.onerror = function () {
-        callback(S.ShapeBuilder.letter('What?'));
+        callback(S.ShapeBuilder.letter('LOVE'));
       };
 
       image.src = url;
@@ -850,13 +768,11 @@ S.ShapeBuilder = (function () {
       shapeContext.arc(r * gap, r * gap, r * gap, 0, 2 * Math.PI, false);
       shapeContext.fill();
       shapeContext.closePath();
-
       return processCanvas();
     },
 
     letter: function (l) {
       var s = 0;
-
       setFontSize(fontSize);
       s = Math.min(
         fontSize,
@@ -867,22 +783,7 @@ S.ShapeBuilder = (function () {
 
       shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height);
       shapeContext.fillText(l, shapeCanvas.width / 2, shapeCanvas.height / 2);
-
       return processCanvas();
-    },
-
-    rectangle: function (w, h) {
-      var dots = [],
-          width = gap * w,
-          height = gap * h;
-
-      for (var y = 0; y < height; y += gap) {
-        for (var x = 0; x < width; x += gap) {
-          dots.push(new S.Point({ x: x, y: y }));
-        }
-      }
-
-      return { dots: dots, w: width, h: height };
     }
   };
 }());
@@ -901,26 +802,9 @@ S.Shape = (function () {
   }
 
   return {
-    shuffleIdle: function () {
-      var a = S.Drawing.getArea();
-
-      for (var d = 0; d < dots.length; d++) {
-        if (!dots[d].s) {
-          dots[d].move({
-            x: Math.random() * a.w,
-            y: Math.random() * a.h
-          });
-        }
-      }
-    },
-
     switchShape: function (n, fast) {
-      var size,
-          a = S.Drawing.getArea();
-
-      width = n.w;
-      height = n.h;
-
+      var size, a = S.Drawing.getArea();
+      width = n.w; height = n.h;
       compensate();
 
       if (n.dots.length > dots.length) {
@@ -930,24 +814,16 @@ S.Shape = (function () {
         }
       }
 
-      var d = 0,
-          i = 0;
+      var d = 0, i = 0;
 
       while (n.dots.length > 0) {
         i = Math.floor(Math.random() * n.dots.length);
         dots[d].e = fast ? 0.25 : (dots[d].s ? 0.14 : 0.11);
 
         if (dots[d].s) {
-          dots[d].move(new S.Point({
-            z: Math.random() * 20 + 10,
-            a: Math.random(),
-            h: 18
-          }));
+          dots[d].move(new S.Point({ z: Math.random() * 20 + 10, a: Math.random(), h: 18 }));
         } else {
-          dots[d].move(new S.Point({
-            z: Math.random() * 5 + 5,
-            h: fast ? 18 : 30
-          }));
+          dots[d].move(new S.Point({ z: Math.random() * 5 + 5, h: fast ? 18 : 30 }));
         }
 
         dots[d].s = true;
@@ -963,14 +839,9 @@ S.Shape = (function () {
         d++;
       }
 
-      for (var i = d; i < dots.length; i++) {
+      for (i = d; i < dots.length; i++) {
         if (dots[i].s) {
-          dots[i].move(new S.Point({
-            z: Math.random() * 20 + 10,
-            a: Math.random(),
-            h: 20
-          }));
-
+          dots[i].move(new S.Point({ z: Math.random() * 20 + 10, a: Math.random(), h: 20 }));
           dots[i].s = false;
           dots[i].e = 0.04;
           dots[i].move(new S.Point({
@@ -985,11 +856,9 @@ S.Shape = (function () {
     },
 
     render: function () {
-      for (var d = 0; d < dots.length; d++) {
-        dots[d].render();
-      }
+      for (var d = 0; d < dots.length; d++) dots[d].render();
     }
-  };
+  }
 }());
 
 S.init();
