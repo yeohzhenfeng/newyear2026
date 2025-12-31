@@ -757,11 +757,11 @@ S.Dot.prototype = {
 
 
 S.ShapeBuilder = (function () {
-  var gap = 13,
+  var gap = 10,
       shapeCanvas = document.createElement('canvas'),
       shapeContext = shapeCanvas.getContext('2d'),
       fontSize = 500,
-      fontFamily = '"PingFang SC","HarmonyOS Sans","Microsoft YaHei","Helvetica Neue",Arial,sans-serif';
+      fontFamily = 'PingFang SC, HarmonyOS Sans, Microsoft YaHei,Helvetica Neue, Arial, sans-serif';
 
   function fit() {
     shapeCanvas.width = Math.floor(window.innerWidth / gap) * gap;
@@ -808,7 +808,7 @@ S.ShapeBuilder = (function () {
   }
 
   function setFontSize(s) {
-    shapeContext.font = 'bold ' + s + 'px ' + fontFamily;
+    shapeContext.font = '600 ' + s + 'px ' + fontFamily;
   }
 
   function isNumber(n) {
@@ -1000,6 +1000,7 @@ S.init();
 
 </body>
 </html>
+
 
 
 
