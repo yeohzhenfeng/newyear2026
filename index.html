@@ -1,341 +1,365 @@
-﻿<!doctype html>
-<html>
+<!doctype html>
+<html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<title>新年快乐</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>新年快乐</title>
 
-<style>
-html,body{
-	margin:0px;
-	width:100%;
-	height:100%;
-	overflow:hidden;
-	background:#000;
-}
-</style>
-
+  <style>
+    html,body{
+      margin:0;
+      width:100%;
+      height:100%;
+      overflow:hidden;
+      background:#000;
+    }
+  </style>
 </head>
 <body>
-<canvas id="canvas" style="position:absolute;width:100%;height:100%;z-index:8888"></canvas>
-<canvas style="position:absolute;width:100%;height:100%;z-index:9999" class="canvas" ></canvas>
-<audio id="myAudio" controls autoplay style="display: none;"> <source src="https://webfs.ali.kugou.com/202212311401/c12fd67b0106b68294c3eb354aec3786/part/0/1516896/KGTX/CLTX001/clip_488850641544fb4c6e14e6b8356d084f.mp3" type="audio/mpeg">
-</audio>
+  <!-- 烟花 -->
+  <canvas id="canvas" style="position:absolute;width:100%;height:100%;z-index:8888"></canvas>
+  <!-- 粒子字 -->
+  <canvas style="position:absolute;width:100%;height:100%;z-index:9999" class="canvas"></canvas>
 
-<div class="overlay">
-  <div class="tabs">
-    <div class="tabs-labels"><span class="tabs-label">Commands</span><span class="tabs-label">Info</span><span class="tabs-label">Share</span></div>
+  <audio id="myAudio" controls autoplay style="display:none">
+    <source src="https://webfs.ali.kugou.com/202212311401/c12fd67b0106b68294c3eb354aec3786/part/0/1516896/KGTX/CLTX001/clip_488850641544fb4c6e14e6b8356d084f.mp3" type="audio/mpeg">
+  </audio>
 
-    <div class="tabs-panels">
-      <ul class="tabs-panel commands">
-      </ul>
+  <div class="overlay">
+    <div class="tabs">
+      <div class="tabs-labels">
+        <span class="tabs-label">Commands</span>
+        <span class="tabs-label">Info</span>
+        <span class="tabs-label">Share</span>
+      </div>
+      <div class="tabs-panels">
+        <ul class="tabs-panel commands"></ul>
+      </div>
     </div>
   </div>
-</div>
+
 <script>
+/* =========================
+   HiDPI Canvas Fix (Mobile blur)
+   ========================= */
+function resizeCanvasHiDPI(cvs, ctx){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cvs.getBoundingClientRect();
+  cvs.width  = Math.round(rect.width  * dpr);
+  cvs.height = Math.round(rect.height * dpr);
+  // 之后都按“CSS像素”绘制
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+
+/* =========================
+   Fireworks (canvas#canvas)
+   ========================= */
 function initVars(){
 
-	pi=Math.PI;
-	ctx=canvas.getContext("2d");
-	canvas.width=canvas.clientWidth;
-	canvas.height=canvas.clientHeight;
-	cx=canvas.width/2;
-	cy=canvas.height/2;
-	playerZ=-25;
-	playerX=playerY=playerVX=playerVY=playerVZ=pitch=yaw=pitchV=yawV=0;
-	scale=600;
-	seedTimer=0;seedInterval=5,seedLife=100;gravity=.02;
-	seeds=new Array();
-	sparkPics=new Array();
-	s="https://cantelope.org/NYE/";
-	for(i=1;i<=10;++i){
-		sparkPic=new Image();
-		sparkPic.src=s+"spark"+i+".png";
-		sparkPics.push(sparkPic);
-	}
-	sparks=new Array();
-	pow1=new Audio(s+"pow1.ogg");
-	pow2=new Audio(s+"pow2.ogg");
-	pow3=new Audio(s+"pow3.ogg");
-	pow4=new Audio(s+"pow4.ogg");
-	frames = 0;
+  pi=Math.PI;
+  ctx=canvas.getContext("2d");
+
+  // HiDPI resize
+  resizeCanvasHiDPI(canvas, ctx);
+
+  // cx/cy 用 CSS 像素
+  const rect = canvas.getBoundingClientRect();
+  cx=rect.width/2;
+  cy=rect.height/2;
+
+  playerZ=-25;
+  playerX=playerY=playerVX=playerVY=playerVZ=pitch=yaw=pitchV=yawV=0;
+  scale=600;
+  seedTimer=0;seedInterval=5,seedLife=100;gravity=.02;
+  seeds=new Array();
+  sparkPics=new Array();
+  s="https://cantelope.org/NYE/";
+  for(i=1;i<=10;++i){
+    sparkPic=new Image();
+    sparkPic.src=s+"spark"+i+".png";
+    sparkPics.push(sparkPic);
+  }
+  sparks=new Array();
+  pow1=new Audio(s+"pow1.ogg");
+  pow2=new Audio(s+"pow2.ogg");
+  pow3=new Audio(s+"pow3.ogg");
+  pow4=new Audio(s+"pow4.ogg");
+  frames = 0;
 }
 
 function rasterizePoint(x,y,z){
 
-	var p,d;
-	x-=playerX;
-	y-=playerY;
-	z-=playerZ;
-	p=Math.atan2(x,z);
-	d=Math.sqrt(x*x+z*z);
-	x=Math.sin(p-yaw)*d;
-	z=Math.cos(p-yaw)*d;
-	p=Math.atan2(y,z);
-	d=Math.sqrt(y*y+z*z);
-	y=Math.sin(p-pitch)*d;
-	z=Math.cos(p-pitch)*d;
-	var rx1=-1000,ry1=1,rx2=1000,ry2=1,rx3=0,ry3=0,rx4=x,ry4=z,uc=(ry4-ry3)*(rx2-rx1)-(rx4-rx3)*(ry2-ry1);
-	if(!uc) return {x:0,y:0,d:-1};
-	var ua=((rx4-rx3)*(ry1-ry3)-(ry4-ry3)*(rx1-rx3))/uc;
-	var ub=((rx2-rx1)*(ry1-ry3)-(ry2-ry1)*(rx1-rx3))/uc;
-	if(!z)z=.000000001;
-	if(ua>0&&ua<1&&ub>0&&ub<1){
-		return {
-			x:cx+(rx1+ua*(rx2-rx1))*scale,
-			y:cy+y/z*scale,
-			d:Math.sqrt(x*x+y*y+z*z)
-		};
-	}else{
-		return {
-			x:cx+(rx1+ua*(rx2-rx1))*scale,
-			y:cy+y/z*scale,
-			d:-1
-		};
-	}
+  var p,d;
+  x-=playerX;
+  y-=playerY;
+  z-=playerZ;
+  p=Math.atan2(x,z);
+  d=Math.sqrt(x*x+z*z);
+  x=Math.sin(p-yaw)*d;
+  z=Math.cos(p-yaw)*d;
+  p=Math.atan2(y,z);
+  d=Math.sqrt(y*y+z*z);
+  y=Math.sin(p-pitch)*d;
+  z=Math.cos(p-pitch)*d;
+  var rx1=-1000,ry1=1,rx2=1000,ry2=1,rx3=0,ry3=0,rx4=x,ry4=z,uc=(ry4-ry3)*(rx2-rx1)-(rx4-rx3)*(ry2-ry1);
+  if(!uc) return {x:0,y:0,d:-1};
+  var ua=((rx4-rx3)*(ry1-ry3)-(ry4-ry3)*(rx1-rx3))/uc;
+  var ub=((rx2-rx1)*(ry1-ry3)-(ry2-ry1)*(rx1-rx3))/uc;
+  if(!z)z=.000000001;
+  if(ua>0&&ua<1&&ub>0&&ub<1){
+    return {
+      x:cx+(rx1+ua*(rx2-rx1))*scale,
+      y:cy+y/z*scale,
+      d:Math.sqrt(x*x+y*y+z*z)
+    };
+  }else{
+    return {
+      x:cx+(rx1+ua*(rx2-rx1))*scale,
+      y:cy+y/z*scale,
+      d:-1
+    };
+  }
 }
 
 function spawnSeed(){
 
-	seed=new Object();
-	seed.x=-50+Math.random()*100;
-	seed.y=25;
-	seed.z=-50+Math.random()*100;
-	seed.vx=.1-Math.random()*.2;
-	seed.vy=-1.5;//*(1+Math.random()/2);
-	seed.vz=.1-Math.random()*.2;
-	seed.born=frames;
-	seeds.push(seed);
+  seed=new Object();
+  seed.x=-50+Math.random()*100;
+  seed.y=25;
+  seed.z=-50+Math.random()*100;
+  seed.vx=.1-Math.random()*.2;
+  seed.vy=-1.5;
+  seed.vz=.1-Math.random()*.2;
+  seed.born=frames;
+  seeds.push(seed);
 }
 
 function splode(x,y,z){
 
-	t=5+parseInt(Math.random()*150);
-	sparkV=1+Math.random()*2.5;
-	type=parseInt(Math.random()*3);
-	switch(type){
-		case 0:
-			pic1=parseInt(Math.random()*10);
-			break;
-		case 1:
-			pic1=parseInt(Math.random()*10);
-			do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
-			break;
-		case 2:
-			pic1=parseInt(Math.random()*10);
-			do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
-			do{ pic3=parseInt(Math.random()*10); }while(pic3==pic1 || pic3==pic2);
-			break;
-	}
-	for(m=1;m<t;++m){
-		spark=new Object();
-		spark.x=x; spark.y=y; spark.z=z;
-		p1=pi*2*Math.random();
-		p2=pi*Math.random();
-		v=sparkV*(1+Math.random()/6)
-		spark.vx=Math.sin(p1)*Math.sin(p2)*v;
-		spark.vz=Math.cos(p1)*Math.sin(p2)*v;
-		spark.vy=Math.cos(p2)*v;
-		switch(type){
-			case 0: spark.img=sparkPics[pic1]; break;
-			case 1:
-				spark.img=sparkPics[parseInt(Math.random()*2)?pic1:pic2];
-				break;
-			case 2:
-				switch(parseInt(Math.random()*3)){
-					case 0: spark.img=sparkPics[pic1]; break;
-					case 1: spark.img=sparkPics[pic2]; break;
-					case 2: spark.img=sparkPics[pic3]; break;
-				}
-				break;
-		}
-		spark.radius=25+Math.random()*50;
-		spark.alpha=1;
-		spark.trail=new Array();
-		sparks.push(spark);
-	}
-	switch(parseInt(Math.random()*4)){
-		case 0:	pow=new Audio(s+"pow1.ogg"); break;
-		case 1:	pow=new Audio(s+"pow2.ogg"); break;
-		case 2:	pow=new Audio(s+"pow3.ogg"); break;
-		case 3:	pow=new Audio(s+"pow4.ogg"); break;
-	}
-	d=Math.sqrt((x-playerX)*(x-playerX)+(y-playerY)*(y-playerY)+(z-playerZ)*(z-playerZ));
-	/*pow.volume=1.5/(1+d/10)*/;
-	pow.play();
+  t=5+parseInt(Math.random()*150);
+  sparkV=1+Math.random()*2.5;
+  type=parseInt(Math.random()*3);
+  switch(type){
+    case 0:
+      pic1=parseInt(Math.random()*10);
+      break;
+    case 1:
+      pic1=parseInt(Math.random()*10);
+      do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
+      break;
+    case 2:
+      pic1=parseInt(Math.random()*10);
+      do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
+      do{ pic3=parseInt(Math.random()*10); }while(pic3==pic1 || pic3==pic2);
+      break;
+  }
+  for(m=1;m<t;++m){
+    spark=new Object();
+    spark.x=x; spark.y=y; spark.z=z;
+    p1=pi*2*Math.random();
+    p2=pi*Math.random();
+    v=sparkV*(1+Math.random()/6)
+    spark.vx=Math.sin(p1)*Math.sin(p2)*v;
+    spark.vz=Math.cos(p1)*Math.sin(p2)*v;
+    spark.vy=Math.cos(p2)*v;
+    switch(type){
+      case 0: spark.img=sparkPics[pic1]; break;
+      case 1:
+        spark.img=sparkPics[parseInt(Math.random()*2)?pic1:pic2];
+        break;
+      case 2:
+        switch(parseInt(Math.random()*3)){
+          case 0: spark.img=sparkPics[pic1]; break;
+          case 1: spark.img=sparkPics[pic2]; break;
+          case 2: spark.img=sparkPics[pic3]; break;
+        }
+        break;
+    }
+    spark.radius=25+Math.random()*50;
+    spark.alpha=1;
+    spark.trail=new Array();
+    sparks.push(spark);
+  }
+  switch(parseInt(Math.random()*4)){
+    case 0: pow=new Audio(s+"pow1.ogg"); break;
+    case 1: pow=new Audio(s+"pow2.ogg"); break;
+    case 2: pow=new Audio(s+"pow3.ogg"); break;
+    case 3: pow=new Audio(s+"pow4.ogg"); break;
+  }
+  d=Math.sqrt((x-playerX)*(x-playerX)+(y-playerY)*(y-playerY)+(z-playerZ)*(z-playerZ));
+  pow.play();
 }
 
 function doLogic(){
 
-	if(seedTimer<frames){
-		seedTimer=frames+seedInterval*Math.random()*10;
-		spawnSeed();
-	}
-	for(i=0;i<seeds.length;++i){
-		seeds[i].vy+=gravity;
-		seeds[i].x+=seeds[i].vx;
-		seeds[i].y+=seeds[i].vy;
-		seeds[i].z+=seeds[i].vz;
-		if(frames-seeds[i].born>seedLife){
-			splode(seeds[i].x,seeds[i].y,seeds[i].z);
-			seeds.splice(i,1);
-		}
-	}
-	for(i=0;i<sparks.length;++i){
-		if(sparks[i].alpha>0 && sparks[i].radius>5){
-			sparks[i].alpha-=.01;
-			sparks[i].radius/=1.02;
-			sparks[i].vy+=gravity;
-			point=new Object();
-			point.x=sparks[i].x;
-			point.y=sparks[i].y;
-			point.z=sparks[i].z;
-			if(sparks[i].trail.length){
-				x=sparks[i].trail[sparks[i].trail.length-1].x;
-				y=sparks[i].trail[sparks[i].trail.length-1].y;
-				z=sparks[i].trail[sparks[i].trail.length-1].z;
-				d=((point.x-x)*(point.x-x)+(point.y-y)*(point.y-y)+(point.z-z)*(point.z-z));
-				if(d>9){
-					sparks[i].trail.push(point);
-				}
-			}else{
-				sparks[i].trail.push(point);
-			}
-			if(sparks[i].trail.length>5)sparks[i].trail.splice(0,1);
-			sparks[i].x+=sparks[i].vx;
-			sparks[i].y+=sparks[i].vy;
-			sparks[i].z+=sparks[i].vz;
-			sparks[i].vx/=1.075;
-			sparks[i].vy/=1.075;
-			sparks[i].vz/=1.075;
-		}else{
-			sparks.splice(i,1);
-		}
-	}
-	p=Math.atan2(playerX,playerZ);
-	d=Math.sqrt(playerX*playerX+playerZ*playerZ);
-	d+=Math.sin(frames/80)/1.25;
-	t=Math.sin(frames/200)/40;
-	playerX=Math.sin(p+t)*d;
-	playerZ=Math.cos(p+t)*d;
-	yaw=pi+p+t;
-}
-
-function rgb(col){
-
-	var r = parseInt((.5+Math.sin(col)*.5)*16);
-	var g = parseInt((.5+Math.cos(col)*.5)*16);
-	var b = parseInt((.5-Math.sin(col)*.5)*16);
-	return "#"+r.toString(16)+g.toString(16)+b.toString(16);
+  if(seedTimer<frames){
+    seedTimer=frames+seedInterval*Math.random()*10;
+    spawnSeed();
+  }
+  for(i=0;i<seeds.length;++i){
+    seeds[i].vy+=gravity;
+    seeds[i].x+=seeds[i].vx;
+    seeds[i].y+=seeds[i].vy;
+    seeds[i].z+=seeds[i].vz;
+    if(frames-seeds[i].born>seedLife){
+      splode(seeds[i].x,seeds[i].y,seeds[i].z);
+      seeds.splice(i,1);
+    }
+  }
+  for(i=0;i<sparks.length;++i){
+    if(sparks[i].alpha>0 && sparks[i].radius>5){
+      sparks[i].alpha-=.01;
+      sparks[i].radius/=1.02;
+      sparks[i].vy+=gravity;
+      point=new Object();
+      point.x=sparks[i].x;
+      point.y=sparks[i].y;
+      point.z=sparks[i].z;
+      if(sparks[i].trail.length){
+        x=sparks[i].trail[sparks[i].trail.length-1].x;
+        y=sparks[i].trail[sparks[i].trail.length-1].y;
+        z=sparks[i].trail[sparks[i].trail.length-1].z;
+        d=((point.x-x)*(point.x-x)+(point.y-y)*(point.y-y)+(point.z-z)*(point.z-z));
+        if(d>9){
+          sparks[i].trail.push(point);
+        }
+      }else{
+        sparks[i].trail.push(point);
+      }
+      if(sparks[i].trail.length>5)sparks[i].trail.splice(0,1);
+      sparks[i].x+=sparks[i].vx;
+      sparks[i].y+=sparks[i].vy;
+      sparks[i].z+=sparks[i].vz;
+      sparks[i].vx/=1.075;
+      sparks[i].vy/=1.075;
+      sparks[i].vz/=1.075;
+    }else{
+      sparks.splice(i,1);
+    }
+  }
+  p=Math.atan2(playerX,playerZ);
+  d=Math.sqrt(playerX*playerX+playerZ*playerZ);
+  d+=Math.sin(frames/80)/1.25;
+  t=Math.sin(frames/200)/40;
+  playerX=Math.sin(p+t)*d;
+  playerZ=Math.cos(p+t)*d;
+  yaw=pi+p+t;
 }
 
 function draw(){
 
-	ctx.clearRect(0,0,cx*2,cy*2);
+  // 清屏使用 CSS 像素尺寸
+  const rect = canvas.getBoundingClientRect();
+  ctx.clearRect(0,0,rect.width,rect.height);
 
-	ctx.fillStyle="#ff8";
-	for(i=-100;i<100;i+=3){
-		for(j=-100;j<100;j+=4){
-			x=i;z=j;y=25;
-			point=rasterizePoint(x,y,z);
-			if(point.d!=-1){
-				size=250/(1+point.d);
-				d = Math.sqrt(x * x + z * z);
-				a = 0.75 - Math.pow(d / 100, 6) * 0.75;
-				if(a>0){
-					ctx.globalAlpha = a;
-					ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
-				}
-			}
-		}
-	}
-	ctx.globalAlpha=1;
-	for(i=0;i<seeds.length;++i){
-		point=rasterizePoint(seeds[i].x,seeds[i].y,seeds[i].z);
-		if(point.d!=-1){
-			size=200/(1+point.d);
-			ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
-		}
-	}
-	point1=new Object();
-	for(i=0;i<sparks.length;++i){
-		point=rasterizePoint(sparks[i].x,sparks[i].y,sparks[i].z);
-		if(point.d!=-1){
-			size=sparks[i].radius*200/(1+point.d);
-			if(sparks[i].alpha<0)sparks[i].alpha=0;
-			if(sparks[i].trail.length){
-				point1.x=point.x;
-				point1.y=point.y;
-				switch(sparks[i].img){
-					case sparkPics[0]:ctx.strokeStyle="#f84";break;
-					case sparkPics[1]:ctx.strokeStyle="#84f";break;
-					case sparkPics[2]:ctx.strokeStyle="#8ff";break;
-					case sparkPics[3]:ctx.strokeStyle="#fff";break;
-					case sparkPics[4]:ctx.strokeStyle="#4f8";break;
-					case sparkPics[5]:ctx.strokeStyle="#f44";break;
-					case sparkPics[6]:ctx.strokeStyle="#f84";break;
-					case sparkPics[7]:ctx.strokeStyle="#84f";break;
-					case sparkPics[8]:ctx.strokeStyle="#fff";break;
-					case sparkPics[9]:ctx.strokeStyle="#44f";break;
-				}
-				for(j=sparks[i].trail.length-1;j>=0;--j){
-					point2=rasterizePoint(sparks[i].trail[j].x,sparks[i].trail[j].y,sparks[i].trail[j].z);
-					if(point2.d!=-1){
-						ctx.globalAlpha=j/sparks[i].trail.length*sparks[i].alpha/2;
-						ctx.beginPath();
-						ctx.moveTo(point1.x,point1.y);
-						ctx.lineWidth=1+sparks[i].radius*10/(sparks[i].trail.length-j)/(1+point2.d);
-						ctx.lineTo(point2.x,point2.y);
-						ctx.stroke();
-						point1.x=point2.x;
-						point1.y=point2.y;
-					}
-				}
-			}
-			ctx.globalAlpha=sparks[i].alpha;
-			ctx.drawImage(sparks[i].img,point.x-size/2,point.y-size/2,size,size);
-		}
-	}
+  ctx.fillStyle="#ff8";
+  for(i=-100;i<100;i+=3){
+    for(j=-100;j<100;j+=4){
+      x=i;z=j;y=25;
+      point=rasterizePoint(x,y,z);
+      if(point.d!=-1){
+        size=250/(1+point.d);
+        d = Math.sqrt(x * x + z * z);
+        a = 0.75 - Math.pow(d / 100, 6) * 0.75;
+        if(a>0){
+          ctx.globalAlpha = a;
+          ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
+        }
+      }
+    }
+  }
+  ctx.globalAlpha=1;
+  for(i=0;i<seeds.length;++i){
+    point=rasterizePoint(seeds[i].x,seeds[i].y,seeds[i].z);
+    if(point.d!=-1){
+      size=200/(1+point.d);
+      ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
+    }
+  }
+  point1=new Object();
+  for(i=0;i<sparks.length;++i){
+    point=rasterizePoint(sparks[i].x,sparks[i].y,sparks[i].z);
+    if(point.d!=-1){
+      size=sparks[i].radius*200/(1+point.d);
+      if(sparks[i].alpha<0)sparks[i].alpha=0;
+      if(sparks[i].trail.length){
+        point1.x=point.x;
+        point1.y=point.y;
+        switch(sparks[i].img){
+          case sparkPics[0]:ctx.strokeStyle="#f84";break;
+          case sparkPics[1]:ctx.strokeStyle="#84f";break;
+          case sparkPics[2]:ctx.strokeStyle="#8ff";break;
+          case sparkPics[3]:ctx.strokeStyle="#fff";break;
+          case sparkPics[4]:ctx.strokeStyle="#4f8";break;
+          case sparkPics[5]:ctx.strokeStyle="#f44";break;
+          case sparkPics[6]:ctx.strokeStyle="#f84";break;
+          case sparkPics[7]:ctx.strokeStyle="#84f";break;
+          case sparkPics[8]:ctx.strokeStyle="#fff";break;
+          case sparkPics[9]:ctx.strokeStyle="#44f";break;
+        }
+        for(j=sparks[i].trail.length-1;j>=0;--j){
+          point2=rasterizePoint(sparks[i].trail[j].x,sparks[i].trail[j].y,sparks[i].trail[j].z);
+          if(point2.d!=-1){
+            ctx.globalAlpha=j/sparks[i].trail.length*sparks[i].alpha/2;
+            ctx.beginPath();
+            ctx.moveTo(point1.x,point1.y);
+            ctx.lineWidth=1+sparks[i].radius*10/(sparks[i].trail.length-j)/(1+point2.d);
+            ctx.lineTo(point2.x,point2.y);
+            ctx.stroke();
+            point1.x=point2.x;
+            point1.y=point2.y;
+          }
+        }
+      }
+      ctx.globalAlpha=sparks[i].alpha;
+      ctx.drawImage(sparks[i].img,point.x-size/2,point.y-size/2,size,size);
+    }
+  }
+  ctx.globalAlpha=1;
 }
 
 function frame(){
 
-	if(frames>100000){
-		seedTimer=0;
-		frames=0;
-	}
-	frames++;
-	draw();
-	doLogic();
-	requestAnimationFrame(frame);
+  if(frames>100000){
+    seedTimer=0;
+    frames=0;
+  }
+  frames++;
+  draw();
+  doLogic();
+  requestAnimationFrame(frame);
 }
 
 window.addEventListener("resize",()=>{
-	canvas.width=canvas.clientWidth;
-	canvas.height=canvas.clientHeight;
-	cx=canvas.width/2;
-	cy=canvas.height/2;
+  resizeCanvasHiDPI(canvas, ctx);
+  const rect = canvas.getBoundingClientRect();
+  cx = rect.width/2;
+  cy = rect.height/2;
 });
 
 initVars();
 frame();
 
-  window.onload = function(){
-             setInterval("toggleSound()",100);
-        }
+/* =========================
+   Audio autoplay helper
+   (mobile may require user gesture; still try)
+   ========================= */
+window.onload = function(){
+  setInterval(toggleSound, 300);
+};
 
-    function toggleSound() {
-                var music = document.getElementById("myAudio");
-                    
-                if (music.paused) { 
-                    music.paused=false;
-                    music.play(); 
-                }    
-        }
-
+function toggleSound() {
+  var music = document.getElementById("myAudio");
+  if (music && music.paused) {
+    music.play().catch(()=>{});
+  }
+}
 </script>
-<script >
-	
 
+<script>
+/* =========================
+   Particle Text (canvas.canvas)
+   ========================= */
 
 var S = {
   init: function () {
@@ -349,7 +373,15 @@ var S = {
     if (i !== -1) {
       S.UI.simulate(decodeURI(action).substring(i + 3));
     } else {
-      S.UI.simulate('|#countdown 5||' + nextYear + '|HAPPY NEW YEAR|Little Fairy|May your hard work pay off|and bring you the best results.|Focus, believe, and achieve.|❤️');
+      // 这里是你红框那段（建议分行，手机更清晰）
+      S.UI.simulate(
+        '|#countdown 5||' + nextYear +
+        '|HAPPY NEW YEAR|' +
+        'Little Fairy|' +
+        'May your hard work pay off|' +
+        'and bring you the best results.|' +
+        'Focus, believe, and achieve.|❤️'
+      );
     }
 
     S.Drawing.loop(function () {
@@ -358,11 +390,10 @@ var S = {
   }
 };
 
-
 S.Drawing = (function () {
   var canvas,
       context,
-      renderFn
+      renderFn,
       requestFrame = window.requestAnimationFrame       ||
                      window.webkitRequestAnimationFrame ||
                      window.mozRequestAnimationFrame    ||
@@ -376,9 +407,10 @@ S.Drawing = (function () {
     init: function (el) {
       canvas = document.querySelector(el);
       context = canvas.getContext('2d');
+
       this.adjustCanvas();
 
-      window.addEventListener('resize', function (e) {
+      window.addEventListener('resize', function () {
         S.Drawing.adjustCanvas();
       });
     },
@@ -390,17 +422,19 @@ S.Drawing = (function () {
       requestFrame.call(window, this.loop.bind(this));
     },
 
+    // HiDPI here
     adjustCanvas: function () {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      resizeCanvasHiDPI(canvas, context);
     },
 
     clearFrame: function () {
-      context.clearRect(0, 0, canvas.width, canvas.height);
+      var rect = canvas.getBoundingClientRect();
+      context.clearRect(0, 0, rect.width, rect.height);
     },
 
     getArea: function () {
-      return { w: canvas.width, h: canvas.height };
+      var rect = canvas.getBoundingClientRect();
+      return { w: rect.width, h: rect.height };
     },
 
     drawCircle: function (p, c) {
@@ -413,13 +447,11 @@ S.Drawing = (function () {
   }
 }());
 
-
 S.UI = (function () {
   var canvas = document.querySelector('.canvas'),
       interval,
-      isTouch = false, //('ontouchstart' in window || navigator.msMaxTouchPoints),
+      isTouch = false,
       currentAction,
-      resizeTimer,
       time,
       maxShapeSize = 30,
       firstAction = true,
@@ -428,7 +460,7 @@ S.UI = (function () {
 
   function formatTime(date) {
     var h = date.getHours(),
-        m = date.getMinutes(),
+        m = date.getMinutes();
     m = m < 10 ? '0' + m : m;
     return h + ':' + m;
   }
@@ -468,15 +500,11 @@ S.UI = (function () {
 
   function performAction(value) {
     var action,
-        value,
         current;
 
-    // overlay.classList.remove('overlay--visible');
     sequence = typeof(value) === 'object' ? value : sequence.concat(value.split('|'));
-    // input.value = '';
-    // checkInputWidth();
 
-    timedAction(function (index) {
+    timedAction(function () {
       current = sequence.shift();
       action = getAction(current);
       value = getValue(current);
@@ -486,6 +514,7 @@ S.UI = (function () {
           value = parseInt(value) || 10;
           value = value > 0 ? value : 10;
 
+          // 倒数每个数字显示更久：1500ms
           timedAction(function (index) {
             if (index === 0) {
               if (sequence.length === 0) {
@@ -531,27 +560,11 @@ S.UI = (function () {
         default:
           S.Shape.switchShape(S.ShapeBuilder.letter(current[0] === cmd ? 'What?' : current));
       }
-    }, 3000, sequence.length);
-  }
-
-  function checkInputWidth(e) {
-    if (input.value.length > 18) {
-      ui.classList.add('ui--wide');
-    } else {
-      ui.classList.remove('ui--wide');
-    }
-
-    if (firstAction && input.value.length > 0) {
-      ui.classList.add('ui--enter');
-    } else {
-      ui.classList.remove('ui--enter');
-    }
+    }, 4000, sequence.length); // 每句停留 4 秒
   }
 
   function bindEvents() {
     document.body.addEventListener('keydown', function (e) {
-      input.focus();
-
       if (e.keyCode === 13) {
         firstAction = false;
         reset();
@@ -559,18 +572,16 @@ S.UI = (function () {
       }
     });
 
-    canvas.addEventListener('click', function (e) {
+    canvas.addEventListener('click', function () {
       overlay.classList.remove('overlay--visible');
     });
   }
 
   function init() {
     bindEvents();
-    // input.focus();
     isTouch && document.body.classList.add('touch');
   }
 
-  // Init
   init();
 
   return {
@@ -579,7 +590,6 @@ S.UI = (function () {
     }
   }
 }());
-
 
 S.UI.Tabs = (function () {
   var tabs = document.querySelector('.tabs'),
@@ -617,10 +627,8 @@ S.UI.Tabs = (function () {
     bindEvents();
   }
 
-  // Init
   init();
 }());
-
 
 S.Point = function (args) {
   this.x = args.x;
@@ -629,7 +637,6 @@ S.Point = function (args) {
   this.a = args.a;
   this.h = args.h;
 };
-
 
 S.Color = function (r, g, b, a) {
   this.r = r;
@@ -643,7 +650,6 @@ S.Color.prototype = {
     return 'rgba(' + this.r + ',' +  + this.g + ',' + this.b + ',' + this.a + ')';
   }
 };
-
 
 S.Dot = function (x, y) {
   this.p = new S.Point({
@@ -753,15 +759,16 @@ S.Dot.prototype = {
     this._update();
     this._draw();
   }
-}
-
+};
 
 S.ShapeBuilder = (function () {
+  // 字更顺：gap=10
   var gap = 10,
       shapeCanvas = document.createElement('canvas'),
       shapeContext = shapeCanvas.getContext('2d'),
       fontSize = 500,
-      fontFamily = 'PingFang SC, HarmonyOS Sans, Microsoft YaHei,Helvetica Neue, Arial, sans-serif';
+      // 字体更好看（注意引号）
+      fontFamily = '"PingFang SC","HarmonyOS Sans","Microsoft YaHei","Helvetica Neue",Arial,sans-serif';
 
   function fit() {
     shapeCanvas.width = Math.floor(window.innerWidth / gap) * gap;
@@ -772,9 +779,8 @@ S.ShapeBuilder = (function () {
   }
 
   function processCanvas() {
-    var pixels = shapeContext.getImageData(0, 0, shapeCanvas.width, shapeCanvas.height).data;
+    var pixels = shapeContext.getImageData(0, 0, shapeCanvas.width, shapeCanvas.height).data,
         dots = [],
-        pixels,
         x = 0,
         y = 0,
         fx = shapeCanvas.width,
@@ -784,11 +790,7 @@ S.ShapeBuilder = (function () {
 
     for (var p = 0; p < pixels.length; p += (4 * gap)) {
       if (pixels[p + 3] > 0) {
-        dots.push(new S.Point({
-          x: x,
-          y: y
-        }));
-
+        dots.push(new S.Point({ x: x, y: y }));
         w = x > w ? x : w;
         h = y > h ? y : h;
         fx = x < fx ? x : fx;
@@ -808,6 +810,7 @@ S.ShapeBuilder = (function () {
   }
 
   function setFontSize(s) {
+    // 不用 bold，改 600 更干净
     shapeContext.font = '600 ' + s + 'px ' + fontFamily;
   }
 
@@ -820,7 +823,6 @@ S.ShapeBuilder = (function () {
     window.addEventListener('resize', fit);
   }
 
-  // Init
   init();
 
   return {
@@ -836,7 +838,7 @@ S.ShapeBuilder = (function () {
 
       image.onerror = function () {
         callback(S.ShapeBuilder.letter('What?'));
-      }
+      };
 
       image.src = url;
     },
@@ -856,9 +858,11 @@ S.ShapeBuilder = (function () {
       var s = 0;
 
       setFontSize(fontSize);
-      s = Math.min(fontSize,
-                  (shapeCanvas.width / shapeContext.measureText(l).width) * 0.8 * fontSize,
-                  (shapeCanvas.height / fontSize) * (isNumber(l) ? 1 : 0.45) * fontSize);
+      s = Math.min(
+        fontSize,
+        (shapeCanvas.width / shapeContext.measureText(l).width) * 0.8 * fontSize,
+        (shapeCanvas.height / fontSize) * (isNumber(l) ? 1 : 0.45) * fontSize
+      );
       setFontSize(s);
 
       shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height);
@@ -874,10 +878,7 @@ S.ShapeBuilder = (function () {
 
       for (var y = 0; y < height; y += gap) {
         for (var x = 0; x < width; x += gap) {
-          dots.push(new S.Point({
-            x: x,
-            y: y,
-          }));
+          dots.push(new S.Point({ x: x, y: y }));
         }
       }
 
@@ -885,7 +886,6 @@ S.ShapeBuilder = (function () {
     }
   };
 }());
-
 
 S.Shape = (function () {
   var dots = [],
@@ -896,7 +896,6 @@ S.Shape = (function () {
 
   function compensate() {
     var a = S.Drawing.getArea();
-
     cx = a.w / 2 - width / 2;
     cy = a.h / 2 - height / 2;
   }
@@ -977,7 +976,7 @@ S.Shape = (function () {
           dots[i].move(new S.Point({
             x: Math.random() * a.w,
             y: Math.random() * a.h,
-            a: 0.3, //.4
+            a: 0.3,
             z: Math.random() * 4,
             h: 0
           }));
@@ -990,18 +989,11 @@ S.Shape = (function () {
         dots[d].render();
       }
     }
-  }
+  };
 }());
 
-
 S.init();
-
 </script>
 
 </body>
 </html>
-
-
-
-
-
