@@ -463,65 +463,77 @@ S.UI = (function () {
     }
   }
 
-  function performAction(value) {
-    var action, current, v;
+function performAction(value) {
+  var action, current, v;
 
-    sequence = typeof(value) === 'object' ? value : sequence.concat(value.split('|'));
-
-    timedAction(function () {
-      current = sequence.shift();
-      action = getAction(current);
-      v = getValue(current);
-
-      switch (action) {
-        case 'countdown':
-          v = parseInt(v) || 10;
-          v = v > 0 ? v : 10;
-          timedAction(function (index) {
-            if (index === 0) {
-              if (sequence.length === 0) {
-                S.Shape.switchShape(S.ShapeBuilder.letter(''));
-              } else {
-                performAction(sequence);
-              }
-            } else {
-              S.Shape.switchShape(S.ShapeBuilder.letter(index), true);
-            }
-          }, 1500, v, true);
-          break;
-
-        case 'time':
-          var t = formatTime(new Date());
-          if (sequence.length > 0) {
-            S.Shape.switchShape(S.ShapeBuilder.letter(t));
-          } else {
-            timedAction(function () {
-              t = formatTime(new Date());
-              if (t !== time) {
-                time = t;
-                S.Shape.switchShape(S.ShapeBuilder.letter(time));
-              }
-            }, 1000);
-          }
-          break;
-
-        case 'image':
-          // ✅ 我们用 love：一男一女 + LOVE 同时出现
-          if (v === 'love') {
-            S.ShapeBuilder.imageFile(S.ShapeBuilder.assets.love, function (shape) {
-              S.Shape.switchShape(shape, true);
-            });
-          } else {
-            S.Shape.switchShape(S.ShapeBuilder.letter('LOVE'), true);
-          }
-          break;
-
-        default:
-          // 普通文字
-          S.Shape.switchShape(S.ShapeBuilder.letter(current[0] === cmd ? 'What?' : current));
-      }
-    }, 4000, sequence.length); // 每句停留 4 秒
+  // ✅ 过滤空段（解决 "||" 导致的空白帧）
+  if (typeof value === 'object') {
+    sequence = value.filter(x => x !== '');
+  } else {
+    sequence = sequence.concat(value.split('|').filter(x => x !== ''));
   }
+
+  // 如果已经没内容了，就不要啥都不显示
+  if (sequence.length === 0) {
+    S.Shape.switchShape(S.ShapeBuilder.letter('LOVE'), true);
+    return;
+  }
+
+  timedAction(function () {
+    current = sequence.shift();
+
+    // ✅ 保险：遇到空就继续
+    if (!current) {
+      if (sequence.length) performAction(sequence);
+      return;
+    }
+
+    action = getAction(current);
+    v = getValue(current);
+
+    switch (action) {
+      case 'countdown':
+        v = parseInt(v) || 10;
+        v = v > 0 ? v : 10;
+
+        // ✅ 倒数用自己的 timer，结束后继续队列
+        timedAction(function (index) {
+          if (index === 0) {
+            if (sequence.length === 0) {
+              // ✅ 如果倒数后没有下一段，就直接显示最终 LOVE 图案
+              S.ShapeBuilder.imageFile(S.ShapeBuilder.assets.love, function (shape) {
+                S.Shape.switchShape(shape, true);
+              });
+            } else {
+              performAction(sequence); // ✅ 继续后面的文字/图案
+            }
+          } else {
+            S.Shape.switchShape(S.ShapeBuilder.letter(index), true);
+          }
+        }, 1500, v, true);
+        break;
+
+      case 'time':
+        var t = formatTime(new Date());
+        S.Shape.switchShape(S.ShapeBuilder.letter(t));
+        break;
+
+      case 'image':
+        if (v === 'love') {
+          S.ShapeBuilder.imageFile(S.ShapeBuilder.assets.love, function (shape) {
+            S.Shape.switchShape(shape, true);
+          });
+        } else {
+          S.Shape.switchShape(S.ShapeBuilder.letter('LOVE'), true);
+        }
+        break;
+
+      default:
+        S.Shape.switchShape(S.ShapeBuilder.letter(current[0] === cmd ? 'What?' : current));
+    }
+  }, 4000, sequence.length);
+}
+
 
   return {
     simulate: function (action) { performAction(action); }
@@ -866,3 +878,4 @@ S.init();
 
 </body>
 </html>
+
