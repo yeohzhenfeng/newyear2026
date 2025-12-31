@@ -3,879 +3,423 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>新年快乐</title>
-
+  <title>Happy New Year</title>
   <style>
-    html,body{
-      margin:0;
-      width:100%;
-      height:100%;
-      overflow:hidden;
-      background:#000;
+    html,body{ margin:0; height:100%; background:#000; overflow:hidden; }
+    canvas{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+    #fx { z-index: 1; }
+    #txt{ z-index: 2; }
+
+    /* 点击开始提示 */
+    .hint{
+      position:fixed; inset:auto 0 18px 0;
+      z-index: 3;
+      display:flex; justify-content:center;
+      pointer-events:none;
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
+      color:rgba(255,255,255,.85);
+      text-shadow:0 6px 18px rgba(0,0,0,.55);
+      letter-spacing:.5px;
+      font-size:14px;
+    }
+    .pill{
+      padding:10px 14px;
+      border-radius:999px;
+      background:rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.18);
+      backdrop-filter: blur(6px);
     }
   </style>
 </head>
-
 <body>
-  <!-- 烟花 -->
-  <canvas id="canvas" style="position:absolute;width:100%;height:100%;z-index:8888"></canvas>
-  <!-- 粒子字 -->
-  <canvas class="canvas" style="position:absolute;width:100%;height:100%;z-index:9999"></canvas>
+  <canvas id="fx"></canvas>
+  <canvas id="txt"></canvas>
 
-  <!-- 背景音乐（手机通常需要用户手势才允许播放） -->
-  <audio id="myAudio" controls autoplay style="display:none">
+  <!-- 你要换歌：把 src 改成你自己的 mp3 链接即可 -->
+  <audio id="bgm" preload="auto" loop>
     <source src="https://webfs.ali.kugou.com/202212311401/c12fd67b0106b68294c3eb354aec3786/part/0/1516896/KGTX/CLTX001/clip_488850641544fb4c6e14e6b8356d084f.mp3" type="audio/mpeg">
   </audio>
 
+  <div class="hint" id="hint"><div class="pill">Tap / Click anywhere to start ✨</div></div>
+
 <script>
 /* =========================
-   HiDPI Canvas Fix (Mobile blur)
-   ========================= */
-function resizeCanvasHiDPI(cvs, ctx){
-  const dpr = window.devicePixelRatio || 1;
+   0) HiDPI helper
+========================= */
+function fitCanvas(cvs, ctx){
+  const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
   const rect = cvs.getBoundingClientRect();
   cvs.width  = Math.round(rect.width  * dpr);
   cvs.height = Math.round(rect.height * dpr);
-  // 之后都按 CSS 像素绘制
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  return { w: rect.width, h: rect.height, dpr };
 }
 
 /* =========================
-   Fireworks (canvas#canvas)
-   ========================= */
-function initVars(){
+   1) Fireworks (simple, no external images)
+========================= */
+const fxCvs = document.getElementById('fx');
+const fxCtx = fxCvs.getContext('2d', { alpha:true });
 
-  pi=Math.PI;
-  ctx=canvas.getContext("2d");
-  resizeCanvasHiDPI(canvas, ctx);
+let VW=0, VH=0;
+let fireworks = [];
+let particles = [];
+let lastT = 0;
 
-  const rect = canvas.getBoundingClientRect();
-  cx=rect.width/2;
-  cy=rect.height/2;
+function rand(a,b){ return a + Math.random()*(b-a); }
 
-  playerZ=-25;
-  playerX=playerY=playerVX=playerVY=playerVZ=pitch=yaw=pitchV=yawV=0;
-  scale=600;
-  seedTimer=0;seedInterval=5,seedLife=100;gravity=.02;
-  seeds=new Array();
-  sparkPics=new Array();
-  s="https://cantelope.org/NYE/";
-  for(i=1;i<=10;++i){
-    sparkPic=new Image();
-    sparkPic.src=s+"spark"+i+".png";
-    sparkPics.push(sparkPic);
-  }
-  sparks=new Array();
-  pow1=new Audio(s+"pow1.ogg");
-  pow2=new Audio(s+"pow2.ogg");
-  pow3=new Audio(s+"pow3.ogg");
-  pow4=new Audio(s+"pow4.ogg");
-  frames = 0;
+function spawnFirework(){
+  const x = rand(VW*0.15, VW*0.85);
+  const y = VH + 10;
+  const tx = x + rand(-VW*0.15, VW*0.15);
+  const ty = rand(VH*0.15, VH*0.45);
+  fireworks.push({
+    x, y, vx:(tx-x)/rand(35,55), vy:(ty-y)/rand(35,55),
+    t:0, tt: rand(35,55),
+    hue: rand(0,360)
+  });
 }
 
-function rasterizePoint(x,y,z){
-
-  var p,d;
-  x-=playerX;
-  y-=playerY;
-  z-=playerZ;
-  p=Math.atan2(x,z);
-  d=Math.sqrt(x*x+z*z);
-  x=Math.sin(p-yaw)*d;
-  z=Math.cos(p-yaw)*d;
-  p=Math.atan2(y,z);
-  d=Math.sqrt(y*y+z*z);
-  y=Math.sin(p-pitch)*d;
-  z=Math.cos(p-pitch)*d;
-  var rx1=-1000,ry1=1,rx2=1000,ry2=1,rx3=0,ry3=0,rx4=x,ry4=z,uc=(ry4-ry3)*(rx2-rx1)-(rx4-rx3)*(ry2-ry1);
-  if(!uc) return {x:0,y:0,d:-1};
-  var ua=((rx4-rx3)*(ry1-ry3)-(ry4-ry3)*(rx1-rx3))/uc;
-  var ub=((rx2-rx1)*(ry1-ry3)-(ry2-ry1)*(rx1-rx3))/uc;
-  if(!z)z=.000000001;
-  if(ua>0&&ua<1&&ub>0&&ub<1){
-    return {
-      x:cx+(rx1+ua*(rx2-rx1))*scale,
-      y:cy+y/z*scale,
-      d:Math.sqrt(x*x+y*y+z*z)
-    };
-  }else{
-    return {
-      x:cx+(rx1+ua*(rx2-rx1))*scale,
-      y:cy+y/z*scale,
-      d:-1
-    };
-  }
-}
-
-function spawnSeed(){
-
-  seed=new Object();
-  seed.x=-50+Math.random()*100;
-  seed.y=25;
-  seed.z=-50+Math.random()*100;
-  seed.vx=.1-Math.random()*.2;
-  seed.vy=-1.5;
-  seed.vz=.1-Math.random()*.2;
-  seed.born=frames;
-  seeds.push(seed);
-}
-
-function splode(x,y,z){
-
-  t=5+parseInt(Math.random()*150);
-  sparkV=1+Math.random()*2.5;
-  type=parseInt(Math.random()*3);
-  switch(type){
-    case 0:
-      pic1=parseInt(Math.random()*10);
-      break;
-    case 1:
-      pic1=parseInt(Math.random()*10);
-      do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
-      break;
-    case 2:
-      pic1=parseInt(Math.random()*10);
-      do{ pic2=parseInt(Math.random()*10); }while(pic2==pic1);
-      do{ pic3=parseInt(Math.random()*10); }while(pic3==pic1 || pic3==pic2);
-      break;
-  }
-  for(m=1;m<t;++m){
-    spark=new Object();
-    spark.x=x; spark.y=y; spark.z=z;
-    p1=pi*2*Math.random();
-    p2=pi*Math.random();
-    v=sparkV*(1+Math.random()/6)
-    spark.vx=Math.sin(p1)*Math.sin(p2)*v;
-    spark.vz=Math.cos(p1)*Math.sin(p2)*v;
-    spark.vy=Math.cos(p2)*v;
-    switch(type){
-      case 0: spark.img=sparkPics[pic1]; break;
-      case 1:
-        spark.img=sparkPics[parseInt(Math.random()*2)?pic1:pic2];
-        break;
-      case 2:
-        switch(parseInt(Math.random()*3)){
-          case 0: spark.img=sparkPics[pic1]; break;
-          case 1: spark.img=sparkPics[pic2]; break;
-          case 2: spark.img=sparkPics[pic3]; break;
-        }
-        break;
-    }
-    spark.radius=25+Math.random()*50;
-    spark.alpha=1;
-    spark.trail=new Array();
-    sparks.push(spark);
-  }
-  switch(parseInt(Math.random()*4)){
-    case 0: pow=new Audio(s+"pow1.ogg"); break;
-    case 1: pow=new Audio(s+"pow2.ogg"); break;
-    case 2: pow=new Audio(s+"pow3.ogg"); break;
-    case 3: pow=new Audio(s+"pow4.ogg"); break;
-  }
-  pow.play();
-}
-
-function doLogic(){
-
-  if(seedTimer<frames){
-    seedTimer=frames+seedInterval*Math.random()*10;
-    spawnSeed();
-  }
-  for(i=0;i<seeds.length;++i){
-    seeds[i].vy+=gravity;
-    seeds[i].x+=seeds[i].vx;
-    seeds[i].y+=seeds[i].vy;
-    seeds[i].z+=seeds[i].vz;
-    if(frames-seeds[i].born>seedLife){
-      splode(seeds[i].x,seeds[i].y,seeds[i].z);
-      seeds.splice(i,1);
-    }
-  }
-  for(i=0;i<sparks.length;++i){
-    if(sparks[i].alpha>0 && sparks[i].radius>5){
-      sparks[i].alpha-=.01;
-      sparks[i].radius/=1.02;
-      sparks[i].vy+=gravity;
-      point=new Object();
-      point.x=sparks[i].x;
-      point.y=sparks[i].y;
-      point.z=sparks[i].z;
-      if(sparks[i].trail.length){
-        x=sparks[i].trail[sparks[i].trail.length-1].x;
-        y=sparks[i].trail[sparks[i].trail.length-1].y;
-        z=sparks[i].trail[sparks[i].trail.length-1].z;
-        d=((point.x-x)*(point.x-x)+(point.y-y)*(point.y-y)+(point.z-z)*(point.z-z));
-        if(d>9){
-          sparks[i].trail.push(point);
-        }
-      }else{
-        sparks[i].trail.push(point);
-      }
-      if(sparks[i].trail.length>5)sparks[i].trail.splice(0,1);
-      sparks[i].x+=sparks[i].vx;
-      sparks[i].y+=sparks[i].vy;
-      sparks[i].z+=sparks[i].vz;
-      sparks[i].vx/=1.075;
-      sparks[i].vy/=1.075;
-      sparks[i].vz/=1.075;
-    }else{
-      sparks.splice(i,1);
-    }
-  }
-  p=Math.atan2(playerX,playerZ);
-  d=Math.sqrt(playerX*playerX+playerZ*playerZ);
-  d+=Math.sin(frames/80)/1.25;
-  t=Math.sin(frames/200)/40;
-  playerX=Math.sin(p+t)*d;
-  playerZ=Math.cos(p+t)*d;
-  yaw=pi+p+t;
-}
-
-function draw(){
-  const rect = canvas.getBoundingClientRect();
-  ctx.clearRect(0,0,rect.width,rect.height);
-
-  ctx.fillStyle="#ff8";
-  for(i=-100;i<100;i+=3){
-    for(j=-100;j<100;j+=4){
-      x=i;z=j;y=25;
-      point=rasterizePoint(x,y,z);
-      if(point.d!=-1){
-        size=250/(1+point.d);
-        d = Math.sqrt(x * x + z * z);
-        a = 0.75 - Math.pow(d / 100, 6) * 0.75;
-        if(a>0){
-          ctx.globalAlpha = a;
-          ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
-        }
-      }
-    }
-  }
-  ctx.globalAlpha=1;
-
-  for(i=0;i<seeds.length;++i){
-    point=rasterizePoint(seeds[i].x,seeds[i].y,seeds[i].z);
-    if(point.d!=-1){
-      size=200/(1+point.d);
-      ctx.fillRect(point.x-size/2,point.y-size/2,size,size);
-    }
-  }
-
-  point1=new Object();
-  for(i=0;i<sparks.length;++i){
-    point=rasterizePoint(sparks[i].x,sparks[i].y,sparks[i].z);
-    if(point.d!=-1){
-      size=sparks[i].radius*200/(1+point.d);
-      if(sparks[i].alpha<0)sparks[i].alpha=0;
-
-      if(sparks[i].trail.length){
-        point1.x=point.x;
-        point1.y=point.y;
-        switch(sparks[i].img){
-          case sparkPics[0]:ctx.strokeStyle="#f84";break;
-          case sparkPics[1]:ctx.strokeStyle="#84f";break;
-          case sparkPics[2]:ctx.strokeStyle="#8ff";break;
-          case sparkPics[3]:ctx.strokeStyle="#fff";break;
-          case sparkPics[4]:ctx.strokeStyle="#4f8";break;
-          case sparkPics[5]:ctx.strokeStyle="#f44";break;
-          case sparkPics[6]:ctx.strokeStyle="#f84";break;
-          case sparkPics[7]:ctx.strokeStyle="#84f";break;
-          case sparkPics[8]:ctx.strokeStyle="#fff";break;
-          case sparkPics[9]:ctx.strokeStyle="#44f";break;
-        }
-        for(j=sparks[i].trail.length-1;j>=0;--j){
-          point2=rasterizePoint(sparks[i].trail[j].x,sparks[i].trail[j].y,sparks[i].trail[j].z);
-          if(point2.d!=-1){
-            ctx.globalAlpha=j/sparks[i].trail.length*sparks[i].alpha/2;
-            ctx.beginPath();
-            ctx.moveTo(point1.x,point1.y);
-            ctx.lineWidth=1+sparks[i].radius*10/(sparks[i].trail.length-j)/(1+point2.d);
-            ctx.lineTo(point2.x,point2.y);
-            ctx.stroke();
-            point1.x=point2.x;
-            point1.y=point2.y;
-          }
-        }
-      }
-
-      ctx.globalAlpha=sparks[i].alpha;
-      ctx.drawImage(sparks[i].img,point.x-size/2,point.y-size/2,size,size);
-    }
-  }
-
-  ctx.globalAlpha=1;
-}
-
-function frame(){
-  if(frames>100000){
-    seedTimer=0;
-    frames=0;
-  }
-  frames++;
-  draw();
-  doLogic();
-  requestAnimationFrame(frame);
-}
-
-window.addEventListener("resize",()=>{
-  resizeCanvasHiDPI(canvas, ctx);
-  const rect = canvas.getBoundingClientRect();
-  cx = rect.width/2;
-  cy = rect.height/2;
-});
-
-initVars();
-frame();
-
-/* ============ Music autoplay try ============ */
-function toggleSound() {
-  var music = document.getElementById("myAudio");
-  if (music && music.paused) {
-    music.play().catch(()=>{});
-  }
-}
-window.addEventListener('load', ()=> setInterval(toggleSound, 400));
-document.addEventListener('click', toggleSound, {passive:true});
-document.addEventListener('touchstart', toggleSound, {passive:true});
-</script>
-
-<script>
-/* =========================
-   Particle Text (canvas.canvas)
-   ========================= */
-
-var S = {
-  init: function () {
-    var action = window.location.href,
-        i = action.indexOf('?a=');
-    var nextYear = new Date().getFullYear() + 1;
-
-    S.Drawing.init('.canvas');
-
-    if (i !== -1) {
-      S.UI.simulate(decodeURI(action).substring(i + 3));
-    } else {
-      // ✅ 最后加：|#image love|
-      // 注意：不要用 emoji（❤️）会导致手机变形/糊
-      S.UI.simulate(
-        '|#countdown 5||' + nextYear +
-        '|HAPPY NEW YEAR|' +
-        'Little Fairy|' +
-        'May your hard work pay off|' +
-        'and bring you great results.|' +
-        'Focus. Believe. Achieve.|' +
-        '#image love'
-      );
-    }
-
-    S.Drawing.loop(function () {
-      S.Shape.render();
+function explode(x,y,hue){
+  const count = Math.floor(rand(48,90));
+  for(let i=0;i<count;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = rand(1.6, 4.6);
+    particles.push({
+      x,y,
+      vx: Math.cos(a)*sp,
+      vy: Math.sin(a)*sp,
+      life: rand(40,80),
+      age:0,
+      hue,
+      r: rand(1.2, 2.8)
     });
   }
-};
+}
 
-S.Drawing = (function () {
-  var canvas,
-      context,
-      renderFn,
-      requestFrame = window.requestAnimationFrame       ||
-                     window.webkitRequestAnimationFrame ||
-                     window.mozRequestAnimationFrame    ||
-                     window.oRequestAnimationFrame      ||
-                     window.msRequestAnimationFrame     ||
-                     function(callback) { window.setTimeout(callback, 1000 / 60); };
+function stepFX(dt){
+  // 背景淡出（尾迹）
+  fxCtx.fillStyle = 'rgba(0,0,0,0.18)';
+  fxCtx.fillRect(0,0,VW,VH);
 
-  return {
-    init: function (el) {
-      canvas = document.querySelector(el);
-      context = canvas.getContext('2d');
-      this.adjustCanvas();
-      window.addEventListener('resize', function () {
-        S.Drawing.adjustCanvas();
-      });
-    },
+  // 偶尔发射
+  if(Math.random() < 0.06) spawnFirework();
 
-    loop: function (fn) {
-      renderFn = !renderFn ? fn : renderFn;
-      this.clearFrame();
-      renderFn();
-      requestFrame.call(window, this.loop.bind(this));
-    },
+  // 火箭
+  for(let i=fireworks.length-1;i>=0;i--){
+    const f = fireworks[i];
+    f.t += dt*60;
+    f.x += f.vx*dt*60;
+    f.y += f.vy*dt*60;
+    f.vy += 0.02*dt*60; // 重力
 
-    adjustCanvas: function () {
-      resizeCanvasHiDPI(canvas, context);
-    },
+    // 火箭亮点
+    fxCtx.beginPath();
+    fxCtx.fillStyle = `hsla(${f.hue},100%,70%,0.9)`;
+    fxCtx.arc(f.x, f.y, 2.2, 0, Math.PI*2);
+    fxCtx.fill();
 
-    clearFrame: function () {
-      var rect = canvas.getBoundingClientRect();
-      context.clearRect(0, 0, rect.width, rect.height);
-    },
-
-    getArea: function () {
-      var rect = canvas.getBoundingClientRect();
-      return { w: rect.width, h: rect.height };
-    },
-
-    drawCircle: function (p, c) {
-      context.fillStyle = c.render();
-      context.beginPath();
-      context.arc(p.x, p.y, p.z, 0, 2 * Math.PI, true);
-      context.closePath();
-      context.fill();
+    if(f.t >= f.tt){
+      explode(f.x, f.y, f.hue);
+      fireworks.splice(i,1);
     }
   }
-}());
 
-S.UI = (function () {
-  var interval,
-      time,
-      maxShapeSize = 30,
-      sequence = [],
-      cmd = '#';
+  // 爆炸粒子
+  for(let i=particles.length-1;i>=0;i--){
+    const p = particles[i];
+    p.age += dt*60;
+    p.x += p.vx*dt*60;
+    p.y += p.vy*dt*60;
+    p.vy += 0.03*dt*60; // 重力
+    p.vx *= 0.985;
+    p.vy *= 0.985;
 
-  function formatTime(date) {
-    var h = date.getHours(),
-        m = date.getMinutes();
-    m = m < 10 ? '0' + m : m;
-    return h + ':' + m;
+    const a = Math.max(0, 1 - p.age/p.life);
+    fxCtx.beginPath();
+    fxCtx.fillStyle = `hsla(${p.hue},100%,70%,${a})`;
+    fxCtx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    fxCtx.fill();
+
+    if(p.age >= p.life) particles.splice(i,1);
+  }
+}
+
+/* =========================
+   2) Particle Text (stable)
+========================= */
+const txtCvs = document.getElementById('txt');
+const txtCtx = txtCvs.getContext('2d', { alpha:true });
+
+const fontStack = `-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif`;
+
+const off = document.createElement('canvas');
+const offCtx = off.getContext('2d');
+
+let dots = [];
+let targetDots = [];
+let dotCount = 1200;     // 粒子数量（会根据文字自动补/减）
+let gap = 6;             // 采样密度（越小越清晰，越大越省性能）
+let holdMs = 2800;       // 每句停留时间
+let morphSpeed = 0.12;   // 变形速度（0.08~0.18）
+
+function buildDotsFromText(text){
+  off.width = VW; off.height = VH;
+  offCtx.clearRect(0,0,VW,VH);
+
+  // 自动字体大小：按屏幕适配，手机不会挤爆
+  const maxW = VW*0.84;
+  let size = Math.min(160, Math.max(64, Math.floor(VW/8)));
+  offCtx.textAlign='center';
+  offCtx.textBaseline='middle';
+  offCtx.fillStyle='#fff';
+
+  // 先用较大字号测量，再缩放
+  offCtx.font = `700 ${size}px ${fontStack}`;
+  while(offCtx.measureText(text).width > maxW && size > 44){
+    size -= 6;
+    offCtx.font = `700 ${size}px ${fontStack}`;
   }
 
-  function getValue(value) { return value && value.split(' ')[1]; }
-  function getAction(value) {
-    value = value && value.split(' ')[0];
-    return value && value[0] === cmd && value.substring(1);
+  // 渲染文字到 offscreen
+  offCtx.fillText(text, VW/2, VH/2);
+
+  const img = offCtx.getImageData(0,0,VW,VH).data;
+  const pts = [];
+  for(let y=0;y<VH;y+=gap){
+    for(let x=0;x<VW;x+=gap){
+      const a = img[(y*VW + x)*4 + 3];
+      if(a > 12) pts.push({x,y});
+    }
   }
+  return pts;
+}
 
-  function timedAction(fn, delay, max, reverse) {
-    clearInterval(interval);
-    var currentAction = reverse ? max : 1;
-    fn(currentAction);
+function buildDotsFromSVG(svgText){
+  // 将 SVG 转成图片再采样
+  return new Promise((resolve)=>{
+    const blob = new Blob([svgText], {type:'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = ()=>{
+      off.width = VW; off.height = VH;
+      offCtx.clearRect(0,0,VW,VH);
 
-    if (!max || (!reverse && currentAction < max) || (reverse && currentAction > 0)) {
-      interval = setInterval(function () {
-        currentAction = reverse ? currentAction - 1 : currentAction + 1;
-        fn(currentAction);
+      // 等比居中缩放
+      const targetW = VW*0.88;
+      const targetH = VH*0.40;
+      const scale = Math.min(targetW/img.width, targetH/img.height);
+      const dw = img.width*scale;
+      const dh = img.height*scale;
+      const dx = (VW - dw)/2;
+      const dy = (VH - dh)/2;
 
-        if ((!reverse && max && currentAction === max) || (reverse && currentAction === 0)) {
-          clearInterval(interval);
+      offCtx.drawImage(img, dx, dy, dw, dh);
+
+      const data = offCtx.getImageData(0,0,VW,VH).data;
+      const pts=[];
+      for(let y=0;y<VH;y+=gap){
+        for(let x=0;x<VW;x+=gap){
+          const a = data[(y*VW + x)*4 + 3];
+          if(a>12) pts.push({x,y});
         }
-      }, delay);
+      }
+      URL.revokeObjectURL(url);
+      resolve(pts);
+    };
+    img.src = url;
+  });
+}
+
+function ensureDots(n){
+  while(dots.length < n){
+    dots.push({
+      x: rand(0,VW), y: rand(0,VH),
+      vx:0, vy:0
+    });
+  }
+  while(dots.length > n){
+    dots.pop();
+  }
+}
+
+function setTarget(pts){
+  // 目标点随机抽样到 dotCount，避免点太多太卡
+  if(pts.length === 0) pts = [{x:VW/2,y:VH/2}];
+  const chosen = [];
+  for(let i=0;i<dotCount;i++){
+    const p = pts[Math.floor(Math.random()*pts.length)];
+    chosen.push(p);
+  }
+  targetDots = chosen;
+  ensureDots(dotCount);
+}
+
+function stepText(){
+  txtCtx.clearRect(0,0,VW,VH);
+
+  // 小发光
+  txtCtx.globalCompositeOperation = 'lighter';
+
+  for(let i=0;i<dots.length;i++){
+    const d = dots[i];
+    const t = targetDots[i] || {x:VW/2,y:VH/2};
+
+    // 简单“弹簧”追踪
+    d.vx += (t.x - d.x) * morphSpeed;
+    d.vy += (t.y - d.y) * morphSpeed;
+    d.vx *= 0.78;
+    d.vy *= 0.78;
+    d.x += d.vx;
+    d.y += d.vy;
+
+    const sp = Math.hypot(d.vx,d.vy);
+    const alpha = Math.max(0.18, Math.min(0.95, 0.35 + sp*0.18));
+
+    txtCtx.beginPath();
+    txtCtx.fillStyle = `rgba(255,255,255,${alpha})`;
+    txtCtx.arc(d.x, d.y, 1.6, 0, Math.PI*2);
+    txtCtx.fill();
+  }
+
+  txtCtx.globalCompositeOperation = 'source-over';
+}
+
+/* =========================
+   3) Sequence control
+========================= */
+const sequence = [
+  { type:'countdown', from:5, stepMs: 900 },
+  { type:'text', value:'HAPPY NEW YEAR', hold: 2600 },
+  { type:'text', value:'Little Fairy', hold: 2200 },
+  { type:'text', value:'May your hard work pay off', hold: 2600 },
+  { type:'text', value:'and bring you great results', hold: 2600 },
+  { type:'text', value:'Focus. Believe. Achieve.', hold: 2600 },
+  { type:'love', hold: 999999 } // 最后常驻
+];
+
+let seqIndex = 0;
+let seqTimer = 0;
+let countdownValue = 0;
+
+async function gotoStep(i){
+  seqIndex = i;
+  seqTimer = 0;
+  const step = sequence[seqIndex];
+
+  if(step.type === 'text'){
+    setTarget(buildDotsFromText(step.value));
+    holdMs = step.hold ?? holdMs;
+  }
+
+  if(step.type === 'countdown'){
+    countdownValue = step.from;
+    setTarget(buildDotsFromText(String(countdownValue)));
+  }
+
+  if(step.type === 'love'){
+    // 一男一女 + LOVE 同时出现（SVG，稳定不变形）
+    const svg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="300" viewBox="0 0 1000 300">
+        <rect width="100%" height="100%" fill="black"/>
+        <g fill="white">
+          <!-- 男（简洁） -->
+          <g transform="translate(220,70)">
+            <circle cx="0" cy="0" r="40"/>
+            <rect x="-22" y="45" width="44" height="110" rx="20"/>
+            <rect x="-70" y="70" width="140" height="26" rx="13"/>
+            <rect x="-50" y="150" width="24" height="90" rx="12"/>
+            <rect x="26" y="150" width="24" height="90" rx="12"/>
+          </g>
+
+          <!-- 女（简洁裙摆） -->
+          <g transform="translate(360,70)">
+            <circle cx="0" cy="0" r="40"/>
+            <path d="M-78,165 C-58,80 -28,45 0,45 C28,45 58,80 78,165
+                     L48,165 L28,255 L-28,255 L-48,165 Z"/>
+            <rect x="-60" y="70" width="120" height="26" rx="13"/>
+          </g>
+
+          <!-- LOVE -->
+          <text x="670" y="195"
+            font-family="${fontStack.replaceAll('"',"'")}"
+            font-size="160" font-weight="800"
+            letter-spacing="12" text-anchor="middle">LOVE</text>
+        </g>
+      </svg>
+    `;
+    const pts = await buildDotsFromSVG(svg);
+    setTarget(pts);
+    holdMs = step.hold ?? holdMs;
+  }
+}
+
+function advanceSequence(dtMs){
+  const step = sequence[seqIndex];
+
+  if(step.type === 'countdown'){
+    seqTimer += dtMs;
+    if(seqTimer >= step.stepMs){
+      seqTimer = 0;
+      countdownValue--;
+      if(countdownValue <= 0){
+        gotoStep(seqIndex + 1);
+      }else{
+        setTarget(buildDotsFromText(String(countdownValue)));
+      }
     }
-  }
-
-function performAction(value) {
-  var action, current, v;
-
-  // ✅ 过滤空段（解决 "||" 导致的空白帧）
-  if (typeof value === 'object') {
-    sequence = value.filter(x => x !== '');
-  } else {
-    sequence = sequence.concat(value.split('|').filter(x => x !== ''));
-  }
-
-  // 如果已经没内容了，就不要啥都不显示
-  if (sequence.length === 0) {
-    S.Shape.switchShape(S.ShapeBuilder.letter('LOVE'), true);
     return;
   }
 
-  timedAction(function () {
-    current = sequence.shift();
-
-    // ✅ 保险：遇到空就继续
-    if (!current) {
-      if (sequence.length) performAction(sequence);
-      return;
-    }
-
-    action = getAction(current);
-    v = getValue(current);
-
-    switch (action) {
-      case 'countdown':
-        v = parseInt(v) || 10;
-        v = v > 0 ? v : 10;
-
-        // ✅ 倒数用自己的 timer，结束后继续队列
-        timedAction(function (index) {
-          if (index === 0) {
-            if (sequence.length === 0) {
-              // ✅ 如果倒数后没有下一段，就直接显示最终 LOVE 图案
-              S.ShapeBuilder.imageFile(S.ShapeBuilder.assets.love, function (shape) {
-                S.Shape.switchShape(shape, true);
-              });
-            } else {
-              performAction(sequence); // ✅ 继续后面的文字/图案
-            }
-          } else {
-            S.Shape.switchShape(S.ShapeBuilder.letter(index), true);
-          }
-        }, 1500, v, true);
-        break;
-
-      case 'time':
-        var t = formatTime(new Date());
-        S.Shape.switchShape(S.ShapeBuilder.letter(t));
-        break;
-
-      case 'image':
-        if (v === 'love') {
-          S.ShapeBuilder.imageFile(S.ShapeBuilder.assets.love, function (shape) {
-            S.Shape.switchShape(shape, true);
-          });
-        } else {
-          S.Shape.switchShape(S.ShapeBuilder.letter('LOVE'), true);
-        }
-        break;
-
-      default:
-        S.Shape.switchShape(S.ShapeBuilder.letter(current[0] === cmd ? 'What?' : current));
-    }
-  }, 4000, sequence.length);
+  // text / love
+  seqTimer += dtMs;
+  const limit = step.hold ?? holdMs;
+  if(seqTimer >= limit && step.type !== 'love'){
+    gotoStep(seqIndex + 1);
+  }
 }
 
+/* =========================
+   4) Main loop
+========================= */
+function loop(t){
+  const dt = Math.min(0.033, (t - lastT)/1000 || 0.016);
+  lastT = t;
 
-  return {
-    simulate: function (action) { performAction(action); }
-  }
-}());
+  stepFX(dt);
+  stepText();
+  advanceSequence(dt*1000);
 
-S.Point = function (args) {
-  this.x = args.x;
-  this.y = args.y;
-  this.z = args.z;
-  this.a = args.a;
-  this.h = args.h;
-};
+  requestAnimationFrame(loop);
+}
 
-S.Color = function (r, g, b, a) {
-  this.r = r; this.g = g; this.b = b; this.a = a;
-};
+/* =========================
+   5) Start (tap to enable audio)
+========================= */
+function resizeAll(){
+  const a = fitCanvas(fxCvs, fxCtx);
+  const b = fitCanvas(txtCvs, txtCtx);
+  VW = a.w; VH = a.h;
+}
+window.addEventListener('resize', ()=>{ resizeAll(); gotoStep(seqIndex); }, {passive:true});
 
-S.Color.prototype = {
-  render: function () {
-    // ✅ 修复原代码的拼接 bug
-    return 'rgba(' + this.r + ',' + this.g + ',' + this.b + ',' + this.a + ')';
-  }
-};
+resizeAll();
+gotoStep(0);
+requestAnimationFrame(loop);
 
-S.Dot = function (x, y) {
-  this.p = new S.Point({ x: x, y: y, z: 5, a: 1, h: 0 });
-  this.e = 0.07;
-  this.s = true;
-  this.c = new S.Color(255, 255, 255, this.p.a);
-  this.t = this.clone();
-  this.q = [];
-};
+// audio: mobile needs gesture
+const bgm = document.getElementById('bgm');
+const hint = document.getElementById('hint');
+let started = false;
 
-S.Dot.prototype = {
-  clone: function () {
-    return new S.Point({ x: this.x, y: this.y, z: this.z, a: this.a, h: this.h });
-  },
-
-  _draw: function () {
-    this.c.a = this.p.a;
-    S.Drawing.drawCircle(this.p, this.c);
-  },
-
-  distanceTo: function (n, details) {
-    var dx = this.p.x - n.x,
-        dy = this.p.y - n.y,
-        d = Math.sqrt(dx * dx + dy * dy);
-    return details ? [dx, dy, d] : d;
-  },
-
-  move: function (p, avoidStatic) {
-    if (!avoidStatic || (avoidStatic && this.distanceTo(p) > 1)) {
-      this.q.push(p);
-    }
-  },
-
-  _moveTowards: function (n) {
-    var details = this.distanceTo(n, true),
-        dx = details[0],
-        dy = details[1],
-        d = details[2],
-        e = this.e * d;
-
-    if (this.p.h === -1) {
-      this.p.x = n.x; this.p.y = n.y;
-      return true;
-    }
-
-    if (d > 1) {
-      this.p.x -= ((dx / d) * e);
-      this.p.y -= ((dy / d) * e);
-    } else {
-      if (this.p.h > 0) this.p.h--;
-      else return true;
-    }
-    return false;
-  },
-
-  _update: function () {
-    if (this._moveTowards(this.t)) {
-      var p = this.q.shift();
-      if (p) {
-        this.t.x = p.x || this.p.x;
-        this.t.y = p.y || this.p.y;
-        this.t.z = p.z || this.p.z;
-        this.t.a = p.a || this.p.a;
-        this.p.h = p.h || 0;
-      } else {
-        if (this.s) {
-          this.p.x -= Math.sin(Math.random() * 3.142);
-          this.p.y -= Math.sin(Math.random() * 3.142);
-        } else {
-          this.move(new S.Point({
-            x: this.p.x + (Math.random() * 50) - 25,
-            y: this.p.y + (Math.random() * 50) - 25,
-          }));
-        }
-      }
-    }
-
-    var d = this.p.a - this.t.a;
-    this.p.a = Math.max(0.1, this.p.a - (d * 0.05));
-    d = this.p.z - this.t.z;
-    this.p.z = Math.max(1, this.p.z - (d * 0.05));
-  },
-
-  render: function () {
-    this._update();
-    this._draw();
-  }
-};
-
-S.ShapeBuilder = (function () {
-  // ✅ 字更顺：gap 小一点
-  var gap = 10,
-      shapeCanvas = document.createElement('canvas'),
-      shapeContext = shapeCanvas.getContext('2d'),
-      fontSize = 500,
-      // ✅ 手机最稳系统字体栈
-      fontFamily = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", Arial, sans-serif';
-
-  function fit() {
-    shapeCanvas.width = Math.floor(window.innerWidth / gap) * gap;
-    shapeCanvas.height = Math.floor(window.innerHeight / gap) * gap;
-    shapeContext.fillStyle = 'red';
-    shapeContext.textBaseline = 'middle';
-    shapeContext.textAlign = 'center';
-  }
-
-  function processCanvas() {
-    var pixels = shapeContext.getImageData(0, 0, shapeCanvas.width, shapeCanvas.height).data,
-        dots = [],
-        x = 0,
-        y = 0,
-        fx = shapeCanvas.width,
-        fy = shapeCanvas.height,
-        w = 0,
-        h = 0;
-
-    for (var p = 0; p < pixels.length; p += (4 * gap)) {
-      if (pixels[p + 3] > 0) {
-        dots.push(new S.Point({ x: x, y: y }));
-        w = x > w ? x : w;
-        h = y > h ? y : h;
-        fx = x < fx ? x : fx;
-        fy = y < fy ? y : fy;
-      }
-
-      x += gap;
-
-      if (x >= shapeCanvas.width) {
-        x = 0;
-        y += gap;
-        p += gap * 4 * shapeCanvas.width;
-      }
-    }
-    return { dots: dots, w: w + fx, h: h + fy };
-  }
-
-  function setFontSize(s) {
-    // ✅ 不用 bold，600 更干净不糊
-    shapeContext.font = '600 ' + s + 'px ' + fontFamily;
-  }
-
-  function isNumber(n) {
-    return !isNaN(parseFloat(n)) && isFinite(n);
-  }
-
-  function init() {
-    fit();
-    window.addEventListener('resize', fit);
-  }
-  init();
-
-  return {
-    // ✅ 一男一女 + LOVE（SVG data URI）
-    assets: {
-      love:
-        'data:image/svg+xml;charset=utf-8,' +
-        encodeURIComponent(`
-          <svg xmlns="http://www.w3.org/2000/svg" width="900" height="260" viewBox="0 0 900 260">
-            <rect width="100%" height="100%" fill="black"/>
-            <!-- 男 -->
-            <g transform="translate(180,58)" fill="white">
-              <circle cx="0" cy="0" r="34"/>
-              <rect x="-18" y="38" width="36" height="92" rx="16"/>
-              <rect x="-56" y="58" width="112" height="22" rx="11"/>
-              <rect x="-42" y="126" width="22" height="62" rx="11"/>
-              <rect x="20"  y="126" width="22" height="62" rx="11"/>
-            </g>
-
-            <!-- 女 -->
-            <g transform="translate(320,58)" fill="white">
-              <circle cx="0" cy="0" r="34"/>
-              <path d="M-62,140 C-46,70 -22,38 0,38 C22,38 46,70 62,140
-                       L38,140 L20,210 L-20,210 L-38,140 Z"/>
-              <rect x="-48" y="58" width="96" height="22" rx="11"/>
-            </g>
-
-            <!-- LOVE -->
-            <text x="560" y="165"
-                  font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', Arial, sans-serif"
-                  font-size="140" font-weight="700" fill="white" letter-spacing="10"
-                  text-anchor="middle">LOVE</text>
-          </svg>
-        `)
-    },
-
-    imageFile: function (url, callback) {
-      var image = new Image();
-
-      image.onload = function () {
-        shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height);
-
-        var a = S.Drawing.getArea();
-        var targetW = a.w * 0.85;
-        var targetH = a.h * 0.38;
-
-        var iw = this.width, ih = this.height;
-        var scale = Math.min(targetW / iw, targetH / ih);
-
-        var dw = iw * scale;
-        var dh = ih * scale;
-
-        var dx = (shapeCanvas.width - dw) / 2;
-        var dy = (shapeCanvas.height - dh) / 2;
-
-        shapeContext.drawImage(this, dx, dy, dw, dh);
-        callback(processCanvas());
-      };
-
-      image.onerror = function () {
-        callback(S.ShapeBuilder.letter('LOVE'));
-      };
-
-      image.src = url;
-    },
-
-    circle: function (d) {
-      var r = Math.max(0, d) / 2;
-      shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height);
-      shapeContext.beginPath();
-      shapeContext.arc(r * gap, r * gap, r * gap, 0, 2 * Math.PI, false);
-      shapeContext.fill();
-      shapeContext.closePath();
-      return processCanvas();
-    },
-
-    letter: function (l) {
-      var s = 0;
-      setFontSize(fontSize);
-      s = Math.min(
-        fontSize,
-        (shapeCanvas.width / shapeContext.measureText(l).width) * 0.8 * fontSize,
-        (shapeCanvas.height / fontSize) * (isNumber(l) ? 1 : 0.45) * fontSize
-      );
-      setFontSize(s);
-
-      shapeContext.clearRect(0, 0, shapeCanvas.width, shapeCanvas.height);
-      shapeContext.fillText(l, shapeCanvas.width / 2, shapeCanvas.height / 2);
-      return processCanvas();
-    }
-  };
-}());
-
-S.Shape = (function () {
-  var dots = [],
-      width = 0,
-      height = 0,
-      cx = 0,
-      cy = 0;
-
-  function compensate() {
-    var a = S.Drawing.getArea();
-    cx = a.w / 2 - width / 2;
-    cy = a.h / 2 - height / 2;
-  }
-
-  return {
-    switchShape: function (n, fast) {
-      var size, a = S.Drawing.getArea();
-      width = n.w; height = n.h;
-      compensate();
-
-      if (n.dots.length > dots.length) {
-        size = n.dots.length - dots.length;
-        for (var d = 1; d <= size; d++) {
-          dots.push(new S.Dot(a.w / 2, a.h / 2));
-        }
-      }
-
-      var d = 0, i = 0;
-
-      while (n.dots.length > 0) {
-        i = Math.floor(Math.random() * n.dots.length);
-        dots[d].e = fast ? 0.25 : (dots[d].s ? 0.14 : 0.11);
-
-        if (dots[d].s) {
-          dots[d].move(new S.Point({ z: Math.random() * 20 + 10, a: Math.random(), h: 18 }));
-        } else {
-          dots[d].move(new S.Point({ z: Math.random() * 5 + 5, h: fast ? 18 : 30 }));
-        }
-
-        dots[d].s = true;
-        dots[d].move(new S.Point({
-          x: n.dots[i].x + cx,
-          y: n.dots[i].y + cy,
-          a: 1,
-          z: 5,
-          h: 0
-        }));
-
-        n.dots = n.dots.slice(0, i).concat(n.dots.slice(i + 1));
-        d++;
-      }
-
-      for (i = d; i < dots.length; i++) {
-        if (dots[i].s) {
-          dots[i].move(new S.Point({ z: Math.random() * 20 + 10, a: Math.random(), h: 20 }));
-          dots[i].s = false;
-          dots[i].e = 0.04;
-          dots[i].move(new S.Point({
-            x: Math.random() * a.w,
-            y: Math.random() * a.h,
-            a: 0.3,
-            z: Math.random() * 4,
-            h: 0
-          }));
-        }
-      }
-    },
-
-    render: function () {
-      for (var d = 0; d < dots.length; d++) dots[d].render();
-    }
-  }
-}());
-
-S.init();
+async function startEverything(){
+  if(started) return;
+  started = true;
+  hint.style.display = 'none';
+  try { await bgm.play(); } catch(e) {}
+}
+document.addEventListener('click', startEverything, {passive:true});
+document.addEventListener('touchstart', startEverything, {passive:true});
 </script>
-
 </body>
 </html>
-
