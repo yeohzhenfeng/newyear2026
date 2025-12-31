@@ -10,14 +10,13 @@
     #fx { z-index: 1; }
     #txt{ z-index: 2; }
 
-    /* 点击开始提示 */
     .hint{
       position:fixed; inset:auto 0 18px 0;
       z-index: 3;
       display:flex; justify-content:center;
       pointer-events:none;
       font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",Arial,sans-serif;
-      color:rgba(255,255,255,.85);
+      color:rgba(255,255,255,.9);
       text-shadow:0 6px 18px rgba(0,0,0,.55);
       letter-spacing:.5px;
       font-size:14px;
@@ -35,7 +34,6 @@
   <canvas id="fx"></canvas>
   <canvas id="txt"></canvas>
 
-  <!-- 你要换歌：把 src 改成你自己的 mp3 链接即可 -->
   <audio id="bgm" preload="auto" loop>
     <source src="https://webfs.ali.kugou.com/202212311401/c12fd67b0106b68294c3eb354aec3786/part/0/1516896/KGTX/CLTX001/clip_488850641544fb4c6e14e6b8356d084f.mp3" type="audio/mpeg">
   </audio>
@@ -56,7 +54,7 @@ function fitCanvas(cvs, ctx){
 }
 
 /* =========================
-   1) Fireworks (simple, no external images)
+   1) Fireworks (simple)
 ========================= */
 const fxCvs = document.getElementById('fx');
 const fxCtx = fxCvs.getContext('2d', { alpha:true });
@@ -98,22 +96,18 @@ function explode(x,y,hue){
 }
 
 function stepFX(dt){
-  // 背景淡出（尾迹）
   fxCtx.fillStyle = 'rgba(0,0,0,0.18)';
   fxCtx.fillRect(0,0,VW,VH);
 
-  // 偶尔发射
   if(Math.random() < 0.06) spawnFirework();
 
-  // 火箭
   for(let i=fireworks.length-1;i>=0;i--){
     const f = fireworks[i];
     f.t += dt*60;
     f.x += f.vx*dt*60;
     f.y += f.vy*dt*60;
-    f.vy += 0.02*dt*60; // 重力
+    f.vy += 0.02*dt*60;
 
-    // 火箭亮点
     fxCtx.beginPath();
     fxCtx.fillStyle = `hsla(${f.hue},100%,70%,0.9)`;
     fxCtx.arc(f.x, f.y, 2.2, 0, Math.PI*2);
@@ -125,13 +119,12 @@ function stepFX(dt){
     }
   }
 
-  // 爆炸粒子
   for(let i=particles.length-1;i>=0;i--){
     const p = particles[i];
     p.age += dt*60;
     p.x += p.vx*dt*60;
     p.y += p.vy*dt*60;
-    p.vy += 0.03*dt*60; // 重力
+    p.vy += 0.03*dt*60;
     p.vx *= 0.985;
     p.vy *= 0.985;
 
@@ -146,7 +139,7 @@ function stepFX(dt){
 }
 
 /* =========================
-   2) Particle Text (stable)
+   2) Particle Text (CRISP)
 ========================= */
 const txtCvs = document.getElementById('txt');
 const txtCtx = txtCvs.getContext('2d', { alpha:true });
@@ -158,31 +151,38 @@ const offCtx = off.getContext('2d');
 
 let dots = [];
 let targetDots = [];
-let dotCount = 1200;     // 粒子数量（会根据文字自动补/减）
-let gap = 6;             // 采样密度（越小越清晰，越大越省性能）
-let holdMs = 2800;       // 每句停留时间
-let morphSpeed = 0.12;   // 变形速度（0.08~0.18）
+
+// ✅ 提高清晰度关键参数
+let dotCount = 2200;  // 粒子更多
+let gap = 4;          // 采样更密，轮廓更完整
+let holdMs = 2600;
+let morphSpeed = 0.12;
+
+// ✅ 底层“发光描边文字”，让你手机一定看得清
+let glowText = '';
+let glowSize = 90;
 
 function buildDotsFromText(text){
   off.width = VW; off.height = VH;
   offCtx.clearRect(0,0,VW,VH);
 
-  // 自动字体大小：按屏幕适配，手机不会挤爆
   const maxW = VW*0.84;
-  let size = Math.min(160, Math.max(64, Math.floor(VW/8)));
+  let size = Math.min(170, Math.max(74, Math.floor(VW/7)));
   offCtx.textAlign='center';
   offCtx.textBaseline='middle';
   offCtx.fillStyle='#fff';
 
-  // 先用较大字号测量，再缩放
-  offCtx.font = `700 ${size}px ${fontStack}`;
-  while(offCtx.measureText(text).width > maxW && size > 44){
+  offCtx.font = `800 ${size}px ${fontStack}`;
+  while(offCtx.measureText(text).width > maxW && size > 46){
     size -= 6;
-    offCtx.font = `700 ${size}px ${fontStack}`;
+    offCtx.font = `800 ${size}px ${fontStack}`;
   }
 
-  // 渲染文字到 offscreen
   offCtx.fillText(text, VW/2, VH/2);
+
+  // 给 glow 用
+  glowText = text;
+  glowSize = size;
 
   const img = offCtx.getImageData(0,0,VW,VH).data;
   const pts = [];
@@ -195,8 +195,19 @@ function buildDotsFromText(text){
   return pts;
 }
 
-function buildDotsFromSVG(svgText){
-  // 将 SVG 转成图片再采样
+function buildDotsFromCanvas(){
+  const data = offCtx.getImageData(0,0,VW,VH).data;
+  const pts=[];
+  for(let y=0;y<VH;y+=gap){
+    for(let x=0;x<VW;x+=gap){
+      const a = data[(y*VW + x)*4 + 3];
+      if(a>12) pts.push({x,y});
+    }
+  }
+  return pts;
+}
+
+async function buildDotsFromSVG(svgText){
   return new Promise((resolve)=>{
     const blob = new Blob([svgText], {type:'image/svg+xml'});
     const url = URL.createObjectURL(blob);
@@ -205,10 +216,10 @@ function buildDotsFromSVG(svgText){
       off.width = VW; off.height = VH;
       offCtx.clearRect(0,0,VW,VH);
 
-      // 等比居中缩放
       const targetW = VW*0.88;
-      const targetH = VH*0.40;
+      const targetH = VH*0.44;
       const scale = Math.min(targetW/img.width, targetH/img.height);
+
       const dw = img.width*scale;
       const dh = img.height*scale;
       const dx = (VW - dw)/2;
@@ -216,16 +227,10 @@ function buildDotsFromSVG(svgText){
 
       offCtx.drawImage(img, dx, dy, dw, dh);
 
-      const data = offCtx.getImageData(0,0,VW,VH).data;
-      const pts=[];
-      for(let y=0;y<VH;y+=gap){
-        for(let x=0;x<VW;x+=gap){
-          const a = data[(y*VW + x)*4 + 3];
-          if(a>12) pts.push({x,y});
-        }
-      }
+      glowText = ''; // 图案时不画 glowText
+      resolve(buildDotsFromCanvas());
+
       URL.revokeObjectURL(url);
-      resolve(pts);
     };
     img.src = url;
   });
@@ -233,18 +238,12 @@ function buildDotsFromSVG(svgText){
 
 function ensureDots(n){
   while(dots.length < n){
-    dots.push({
-      x: rand(0,VW), y: rand(0,VH),
-      vx:0, vy:0
-    });
+    dots.push({ x: rand(0,VW), y: rand(0,VH), vx:0, vy:0 });
   }
-  while(dots.length > n){
-    dots.pop();
-  }
+  while(dots.length > n) dots.pop();
 }
 
 function setTarget(pts){
-  // 目标点随机抽样到 dotCount，避免点太多太卡
   if(pts.length === 0) pts = [{x:VW/2,y:VH/2}];
   const chosen = [];
   for(let i=0;i<dotCount;i++){
@@ -255,17 +254,44 @@ function setTarget(pts){
   ensureDots(dotCount);
 }
 
+function drawGlowText(){
+  if(!glowText) return;
+
+  txtCtx.save();
+  txtCtx.textAlign='center';
+  txtCtx.textBaseline='middle';
+  txtCtx.font = `900 ${glowSize}px ${fontStack}`;
+
+  // 外发光
+  txtCtx.shadowColor = 'rgba(255,255,255,0.65)';
+  txtCtx.shadowBlur = 18;
+  txtCtx.lineWidth = 5;
+  txtCtx.strokeStyle = 'rgba(255,255,255,0.55)';
+  txtCtx.strokeText(glowText, VW/2, VH/2);
+
+  // 内亮一点
+  txtCtx.shadowBlur = 10;
+  txtCtx.fillStyle = 'rgba(255,255,255,0.22)';
+  txtCtx.fillText(glowText, VW/2, VH/2);
+
+  txtCtx.restore();
+}
+
 function stepText(){
   txtCtx.clearRect(0,0,VW,VH);
 
-  // 小发光
+  // ✅ 先画底层发光文字（保证清晰）
+  drawGlowText();
+
   txtCtx.globalCompositeOperation = 'lighter';
+
+  // ✅ 粒子更大，更清楚
+  const dotR = 2.6;
 
   for(let i=0;i<dots.length;i++){
     const d = dots[i];
     const t = targetDots[i] || {x:VW/2,y:VH/2};
 
-    // 简单“弹簧”追踪
     d.vx += (t.x - d.x) * morphSpeed;
     d.vy += (t.y - d.y) * morphSpeed;
     d.vx *= 0.78;
@@ -274,11 +300,11 @@ function stepText(){
     d.y += d.vy;
 
     const sp = Math.hypot(d.vx,d.vy);
-    const alpha = Math.max(0.18, Math.min(0.95, 0.35 + sp*0.18));
+    const alpha = Math.max(0.35, Math.min(0.95, 0.55 + sp*0.10));
 
     txtCtx.beginPath();
     txtCtx.fillStyle = `rgba(255,255,255,${alpha})`;
-    txtCtx.arc(d.x, d.y, 1.6, 0, Math.PI*2);
+    txtCtx.arc(d.x, d.y, dotR, 0, Math.PI*2);
     txtCtx.fill();
   }
 
@@ -290,12 +316,12 @@ function stepText(){
 ========================= */
 const sequence = [
   { type:'countdown', from:5, stepMs: 900 },
-  { type:'text', value:'HAPPY NEW YEAR', hold: 2600 },
+  { type:'text', value:'HAPPY NEW YEAR', hold: 2400 },
   { type:'text', value:'Little Fairy', hold: 2200 },
   { type:'text', value:'May your hard work pay off', hold: 2600 },
   { type:'text', value:'and bring you great results', hold: 2600 },
   { type:'text', value:'Focus. Believe. Achieve.', hold: 2600 },
-  { type:'love', hold: 999999 } // 最后常驻
+  { type:'love', hold: 999999 }
 ];
 
 let seqIndex = 0;
@@ -303,7 +329,7 @@ let seqTimer = 0;
 let countdownValue = 0;
 
 async function gotoStep(i){
-  seqIndex = i;
+  seqIndex = Math.min(i, sequence.length-1);
   seqTimer = 0;
   const step = sequence[seqIndex];
 
@@ -318,32 +344,28 @@ async function gotoStep(i){
   }
 
   if(step.type === 'love'){
-    // 一男一女 + LOVE 同时出现（SVG，稳定不变形）
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="300" viewBox="0 0 1000 300">
+      <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="320" viewBox="0 0 1000 320">
         <rect width="100%" height="100%" fill="black"/>
         <g fill="white">
-          <!-- 男（简洁） -->
-          <g transform="translate(220,70)">
-            <circle cx="0" cy="0" r="40"/>
-            <rect x="-22" y="45" width="44" height="110" rx="20"/>
-            <rect x="-70" y="70" width="140" height="26" rx="13"/>
-            <rect x="-50" y="150" width="24" height="90" rx="12"/>
-            <rect x="26" y="150" width="24" height="90" rx="12"/>
+          <g transform="translate(220,78)">
+            <circle cx="0" cy="0" r="42"/>
+            <rect x="-24" y="48" width="48" height="120" rx="22"/>
+            <rect x="-76" y="76" width="152" height="28" rx="14"/>
+            <rect x="-54" y="164" width="26" height="94" rx="13"/>
+            <rect x="28" y="164" width="26" height="94" rx="13"/>
           </g>
 
-          <!-- 女（简洁裙摆） -->
-          <g transform="translate(360,70)">
-            <circle cx="0" cy="0" r="40"/>
-            <path d="M-78,165 C-58,80 -28,45 0,45 C28,45 58,80 78,165
-                     L48,165 L28,255 L-28,255 L-48,165 Z"/>
-            <rect x="-60" y="70" width="120" height="26" rx="13"/>
+          <g transform="translate(370,78)">
+            <circle cx="0" cy="0" r="42"/>
+            <path d="M-86,182 C-62,88 -30,48 0,48 C30,48 62,88 86,182
+                     L54,182 L30,282 L-30,282 L-54,182 Z"/>
+            <rect x="-66" y="76" width="132" height="28" rx="14"/>
           </g>
 
-          <!-- LOVE -->
-          <text x="670" y="195"
-            font-family="${fontStack.replaceAll('"',"'")}"
-            font-size="160" font-weight="800"
+          <text x="690" y="215"
+            font-family="-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',Arial,sans-serif"
+            font-size="170" font-weight="900"
             letter-spacing="12" text-anchor="middle">LOVE</text>
         </g>
       </svg>
@@ -362,16 +384,12 @@ function advanceSequence(dtMs){
     if(seqTimer >= step.stepMs){
       seqTimer = 0;
       countdownValue--;
-      if(countdownValue <= 0){
-        gotoStep(seqIndex + 1);
-      }else{
-        setTarget(buildDotsFromText(String(countdownValue)));
-      }
+      if(countdownValue <= 0) gotoStep(seqIndex + 1);
+      else setTarget(buildDotsFromText(String(countdownValue)));
     }
     return;
   }
 
-  // text / love
   seqTimer += dtMs;
   const limit = step.hold ?? holdMs;
   if(seqTimer >= limit && step.type !== 'love'){
@@ -394,7 +412,7 @@ function loop(t){
 }
 
 /* =========================
-   5) Start (tap to enable audio)
+   5) Start
 ========================= */
 function resizeAll(){
   const a = fitCanvas(fxCvs, fxCtx);
